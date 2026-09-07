@@ -55,7 +55,7 @@ jobs:
 
       - name: Dépose l'installeur comme artefact du run (branches non taguées)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: installer
           path: dist/*.exe
