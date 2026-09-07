@@ -1,0 +1,80 @@
+<Window x:Class="VoiceToText.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Paramètres — Dictée universelle"
+        Width="420" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="{DynamicResource Theme.Background}"
+        TextElement.Foreground="{DynamicResource Theme.TextPrimary}">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Themes/AppStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <StackPanel Margin="16">
+        <TextBlock Text="Apparence" FontWeight="Bold" Margin="0,0,0,4" />
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+            <RadioButton x:Name="LightThemeRadio" Content="Clair" GroupName="Theme" Margin="0,0,16,0"
+                         Checked="ThemeRadio_Checked" />
+            <RadioButton x:Name="DarkThemeRadio" Content="Sombre" GroupName="Theme"
+                         Checked="ThemeRadio_Checked" />
+        </StackPanel>
+        <StackPanel x:Name="PrimaryColorPanel" Orientation="Horizontal" Margin="0,0,0,16" />
+
+        <TextBlock Text="Déclencheur (touche ou bouton de souris)" FontWeight="Bold" Margin="0,0,0,4" />
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+            <Button x:Name="TriggerCaptureButton" Content="Capturer…" Click="CaptureTrigger_Click" Padding="8,2" />
+            <TextBlock x:Name="TriggerText" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray" />
+        </StackPanel>
+
+        <TextBlock Text="Raccourci d'affichage/masquage de l'overlay" FontWeight="Bold" Margin="0,0,0,4" />
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+            <Button x:Name="OverlayToggleCaptureButton" Content="Capturer…" Click="CaptureOverlayToggle_Click" Padding="8,2" />
+            <TextBlock x:Name="OverlayToggleText" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray" />
+        </StackPanel>
+
+        <TextBlock Text="Clé API OpenAI" FontWeight="Bold" Margin="0,0,0,4" />
+        <PasswordBox x:Name="ApiKeyPasswordBox" Margin="0,0,0,4" />
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+            <Button Content="Enregistrer la clé" Click="SaveApiKey_Click" Padding="8,2" />
+            <TextBlock x:Name="ApiKeyStatusText" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray" />
+        </StackPanel>
+
+        <TextBlock Text="Modèle de transcription" FontWeight="Bold" Margin="0,0,0,4" />
+        <ComboBox x:Name="ModelComboBox" DisplayMemberPath="Label" SelectedValuePath="Id" Margin="0,0,0,12" />
+
+        <TextBlock Text="Langue" FontWeight="Bold" Margin="0,0,0,4" />
+        <ComboBox x:Name="LanguageComboBox" Margin="0,0,0,12">
+            <ComboBoxItem Content="Français" Tag="fr" />
+            <ComboBoxItem Content="English" Tag="en" />
+            <ComboBoxItem Content="Détection automatique" Tag="auto" />
+        </ComboBox>
+
+        <TextBlock Text="Microphone" FontWeight="Bold" Margin="0,0,0,4" />
+        <ComboBox x:Name="MicrophoneComboBox" DisplayMemberPath="Name" SelectedValuePath="Id" Margin="0,0,0,12" />
+
+        <TextBlock Text="Durée maximale d'enregistrement (secondes)" FontWeight="Bold" Margin="0,0,0,4" />
+        <TextBox x:Name="MaxDurationTextBox" Margin="0,0,0,12" />
+
+        <CheckBox x:Name="ShowRecIndicatorCheckBox" Content="Afficher l'indicateur REC" Margin="0,0,0,6" />
+        <CheckBox x:Name="ShowLastTranscriptionCheckBox" Content="Afficher la dernière transcription" Margin="0,0,0,6" />
+        <CheckBox x:Name="AlwaysOnTopCheckBox" Content="Overlay toujours au-dessus" Margin="0,0,0,6" />
+
+        <TextBlock Text="Opacité de l'overlay" FontWeight="Bold" Margin="0,0,0,4" />
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+            <Slider x:Name="OverlayOpacitySlider" Width="260" Minimum="0.2" Maximum="1.0"
+                    TickFrequency="0.05" IsSnapToTickEnabled="True"
+                    ValueChanged="OverlayOpacitySlider_ValueChanged" />
+            <TextBlock x:Name="OverlayOpacityText" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray" />
+        </StackPanel>
+        <CheckBox x:Name="LaunchAtStartupCheckBox" Content="Lancer au démarrage de Windows" Margin="0,0,0,16" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Annuler" Click="Cancel_Click" Padding="12,4" Margin="0,0,8,0" />
+            <Button Content="Enregistrer" Click="Save_Click" Padding="12,4" IsDefault="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>
