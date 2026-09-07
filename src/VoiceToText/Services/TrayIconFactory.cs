@@ -5,24 +5,30 @@ using System.IO;
 namespace VoiceToText.Services;
 
 /// <summary>
-/// Dessine les icônes en GDI+ (forme de micro) à plusieurs résolutions et les assemble en .ico
-/// multi-frame : Windows choisit alors la meilleure résolution selon le DPI/la taille d'affichage
-/// (zone de notification, Explorateur, barre des tâches) au lieu d'agrandir une seule petite image.
+/// Assemble les icônes (zone de notification + exe) à partir de deux images sources haute
+/// résolution (Assets/mic-*-source.png, un micro en dégradé dessiné à la main sur lucide.dev/icons
+/// puis recoloré) rééchantillonnées à chaque taille cible, plutôt qu'un dessin procédural GDI+.
 /// </summary>
 internal static class TrayIconFactory
 {
     private static readonly int[] TraySizes = { 16, 20, 24, 32, 40, 48, 64 };
     private static readonly int[] ApplicationIconSizes = { 16, 24, 32, 48, 64, 128, 256 };
 
+    private static string IdleSourcePath => Path.Combine(AppContext.BaseDirectory, "Assets", "eq-idle-source.png");
+    private static string ActiveSourcePath => Path.Combine(AppContext.BaseDirectory, "Assets", "eq-active-source.png");
+
     public static (Icon Idle, Icon Active) CreateTrayIcons()
     {
-        return (BuildMultiResolutionIcon(TraySizes, active: false), BuildMultiResolutionIcon(TraySizes, active: true));
+        using var idleSource = new Bitmap(IdleSourcePath);
+        using var activeSource = new Bitmap(ActiveSourcePath);
+        return (BuildMultiResolutionIcon(idleSource, TraySizes), BuildMultiResolutionIcon(activeSource, TraySizes));
     }
 
     /// <summary>Fichier .ico multi-résolution destiné à `&lt;ApplicationIcon&gt;` (icône de l'exe / futur installeur).</summary>
     public static byte[] BuildApplicationIcoBytes()
     {
-        var bitmaps = ApplicationIconSizes.Select(size => DrawMicBitmap(size, active: false)).ToList();
+        using var idleSource = new Bitmap(IdleSourcePath);
+        var bitmaps = ApplicationIconSizes.Select(size => Resize(idleSource, size)).ToList();
         try
         {
             return IcoWriter.Build(bitmaps);
@@ -36,9 +42,9 @@ internal static class TrayIconFactory
         }
     }
 
-    private static Icon BuildMultiResolutionIcon(IReadOnlyList<int> sizes, bool active)
+    private static Icon BuildMultiResolutionIcon(Bitmap source, IReadOnlyList<int> sizes)
     {
-        var bitmaps = sizes.Select(size => DrawMicBitmap(size, active)).ToList();
+        var bitmaps = sizes.Select(size => Resize(source, size)).ToList();
         try
         {
             var icoBytes = IcoWriter.Build(bitmaps);
@@ -54,33 +60,14 @@ internal static class TrayIconFactory
         }
     }
 
-    private static Bitmap DrawMicBitmap(int size, bool active)
+    private static Bitmap Resize(Bitmap source, int size)
     {
-        var bitmap = new Bitmap(size, size);
-        using var g = Graphics.FromImage(bitmap);
+        var resized = new Bitmap(size, size);
+        using var g = Graphics.FromImage(resized);
+        g.CompositingQuality = CompositingQuality.HighQuality;
+        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.Clear(Color.Transparent);
-
-        var s = size / 32f;
-        var micColor = active ? Color.FromArgb(255, 225, 45, 45) : Color.FromArgb(255, 230, 230, 230);
-        using var micBrush = new SolidBrush(micColor);
-        using var outlinePen = new Pen(Color.FromArgb(255, 40, 40, 40), Math.Max(1f, 1.5f * s));
-        using var standPen = new Pen(Color.FromArgb(255, 60, 60, 60), Math.Max(1f, 2f * s));
-
-        var headRect = new RectangleF(11 * s, 3 * s, 10 * s, 15 * s);
-        g.FillEllipse(micBrush, headRect);
-        g.DrawEllipse(outlinePen, headRect);
-
-        g.DrawArc(standPen, 7 * s, 9 * s, 18 * s, 16 * s, 0, 180);
-        g.DrawLine(standPen, 16 * s, 25 * s, 16 * s, 28 * s);
-        g.DrawLine(standPen, 11 * s, 28 * s, 21 * s, 28 * s);
-
-        if (active)
-        {
-            using var dotBrush = new SolidBrush(Color.FromArgb(255, 255, 20, 20));
-            g.FillEllipse(dotBrush, 21 * s, 1 * s, 9 * s, 9 * s);
-        }
-
-        return bitmap;
+        g.DrawImage(source, 0, 0, size, size);
+        return resized;
     }
 }
