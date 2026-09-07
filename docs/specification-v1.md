@@ -1,14 +1,14 @@
 # Specification fonctionnelle - Dictée universelle Windows
 
-**Statut :** à valider avant initialisation du dépôt et développement  
+**Statut :** validé le 2026-09-06 — prêt pour initialisation du dépôt et développement  
 **Date :** 2026-09-06  
 **Produit :** application WPF Windows de dictée vocale universelle
 
 ## 1. Objectif
 
-Créer une application Windows autonome permettant d'enregistrer une dictée à partir d'un raccourci clavier global, de la transcrire localement avec Whisper, puis de coller automatiquement le texte obtenu dans le contrôle qui avait le focus avant l'enregistrement.
+Créer une application Windows autonome permettant d'enregistrer une dictée à partir d'un raccourci clavier global, de la transcrire via un service de transcription distant (API compatible Whisper ou l'un de ses successeurs), puis de coller automatiquement le texte obtenu dans le contrôle qui avait le focus avant l'enregistrement.
 
-L'application doit proposer une expérience plus simple que l'ancienne extension VS Code : aucune extension à installer, une sélection claire du périphérique audio, un modèle Whisper explicitement sélectionnable et une interface de réglages durable.
+L'application doit proposer une expérience plus simple que l'ancienne extension VS Code : aucune extension à installer, une sélection claire du périphérique audio, un fournisseur de transcription distant configurable (endpoint, clé API, modèle) et une interface de réglages durable.
 
 ## 2. Utilisateur cible et périmètre
 
@@ -53,15 +53,15 @@ Le périmètre couvre Windows 10 et Windows 11. Il ne couvre pas macOS, Linux, l
 - Pré-sélection du périphérique d'entrée Windows par défaut.
 - Indication d'erreur utile si le périphérique choisi est indisponible ou déjà inaccessible.
 
-### 4.4 Transcription Whisper
+### 4.4 Transcription distante
 
-- Transcription locale, sans envoyer les données audio à un service distant.
-- Moteur envisagé : `whisper.cpp` ou un wrapper .NET éprouvé autour de ce moteur.
-- Sélection du modèle dans les paramètres, au minimum : `tiny`, `base`, `small`, `medium`.
-- Langue configurable, avec `Français` par défaut et détection automatique disponible.
+- Transcription réalisée via un service distant compatible Whisper (API HTTP), configuré par fichier — endpoint, clé API, modèle — sur le même principe de configuration que l'ancienne extension VS Code.
+- Le MVP implémente un seul fournisseur, derrière une interface permettant d'en ajouter d'autres par la suite sans réécrire le reste de l'application.
+- Langue configurable, avec `Français` par défaut et détection automatique disponible si le fournisseur le permet.
 - Préservation de la ponctuation produite par le modèle.
 - État visible pendant la transcription : `Transcription en cours`.
-- En cas d'échec, aucun collage ne doit être déclenché et l'erreur doit être visible depuis l'overlay ou la zone de notification.
+- En cas d'échec (réseau, authentification, quota dépassé), aucun collage ne doit être déclenché et l'erreur doit être visible depuis l'overlay ou la zone de notification.
+- Le fichier audio temporaire envoyé au fournisseur est supprimé localement après la transcription (cf. §6).
 
 ### 4.5 Collage universel
 
@@ -75,7 +75,7 @@ Le périmètre couvre Windows 10 et Windows 11. Il ne couvre pas macOS, Linux, l
 
 L'overlay est une fenêtre WPF sans bordure, épinglable au-dessus des autres fenêtres et déplaçable par glisser-déposer. Sa position est mémorisée.
 
-Deux modules indépendants sont affichables ou masquables :
+Trois modules indépendants sont affichables ou masquables :
 
 1. **Indicateur d'enregistrement**
    - Petit fond noir carré ou très compact.
@@ -87,8 +87,14 @@ Deux modules indépendants sont affichables ou masquables :
    - Bouton Copier.
    - Bouton fermer/masquer.
    - État vide discret avant la première transcription.
+   - Réutilisée pour afficher une entrée sélectionnée depuis le module Historique (cf. ci-dessous).
 
-La visibilité des deux modules et le statut « toujours au-dessus » sont réglables indépendamment.
+3. **Historique**
+   - Case à cocher activant ou désactivant l'historisation locale des dictées.
+   - Bouton ouvrant le dossier d'historique dans l'explorateur Windows.
+   - Liste déroulante énumérant les dictées historisées, les plus récentes en premier ; sélectionner une entrée l'affiche dans le module Dernière transcription, avec son bouton Copier.
+
+La visibilité des trois modules et le statut « toujours au-dessus » sont réglables indépendamment.
 
 ### 4.7 Paramètres
 
@@ -97,10 +103,12 @@ Les paramètres sont persistés par utilisateur Windows et accessibles sans arr�
 - Raccourci global.
 - Microphone d'entrée.
 - Durée maximale d'enregistrement.
-- Modèle Whisper.
+- Fournisseur de transcription distante (endpoint, clé API, modèle).
 - Langue de transcription.
 - Affichage de l'indicateur `REC`.
 - Affichage de la dernière transcription.
+- Historisation des dictées activée ou non.
+- Affichage du module Historique.
 - Position des overlays.
 - Toujours au-dessus.
 - Lancement au démarrage de Windows.
@@ -125,11 +133,12 @@ Pendant `Enregistrement`, un nouvel appui sur le raccourci arrête la capture. P
 
 - **Plateforme :** .NET 10 LTS et WPF, architecture MVVM.
 - **Capture audio :** NAudio, en WASAPI capture ou capture du périphérique sélectionné.
-- **Transcription :** wrapper .NET maintenu de `whisper.cpp`, exécuté localement.
+- **Transcription :** client HTTP .NET vers un service distant compatible Whisper, authentifié par clé API, derrière une interface permettant d'ajouter d'autres fournisseurs.
 - **Raccourci global :** API Windows `RegisterHotKey` via interop contrôlée.
 - **Fenêtre active et collage :** Win32 (`GetForegroundWindow`, `SetForegroundWindow`, presse-papiers WPF, envoi de `Ctrl+V`).
 - **Zone de notification :** composant compatible WPF, choisi après vérification de compatibilité .NET 10.
-- **Configuration :** fichier JSON dans le répertoire applicatif utilisateur (`LocalApplicationData`).
+- **Configuration :** fichier JSON dans le répertoire applicatif utilisateur (`LocalApplicationData`), incluant l'endpoint et la clé API du fournisseur de transcription.
+- **Historique :** un fichier texte horodaté par dictée, dans un sous-dossier dédié du répertoire applicatif utilisateur.
 
 Les fichiers audio temporaires doivent être supprimés après transcription, sauf option explicite de diagnostic ajoutée ultérieurement.
 
@@ -141,13 +150,13 @@ WPF shell / zone de notification / overlays
             ViewModels MVVM
                   |
           DictationCoordinator
-     /          |          |          \
-Hotkey     AudioRecorder  WhisperTranscriber  TextPaster
+     /       |          |          |          \
+Hotkey  AudioRecorder TranscriptionClient TextPaster HistoryStore
                   |
              SettingsStore
 ```
 
-`DictationCoordinator` est le propriétaire de la machine à états et garantit qu'une seule dictée est traitée à la fois.
+`DictationCoordinator` est le propriétaire de la machine à états et garantit qu'une seule dictée est traitée à la fois. `TranscriptionClient` encapsule l'appel au fournisseur distant configuré. `HistoryStore` écrit et liste les fichiers d'historique lorsque l'historisation est activée.
 
 ## 8. Critères d'acceptation
 
@@ -157,31 +166,36 @@ Hotkey     AudioRecorder  WhisperTranscriber  TextPaster
 - Modifier la durée maximale modifie bien l'arrêt automatique de l'enregistrement.
 - L'indicateur `REC` apparaît au démarrage de la capture, clignote, puis disparaît ou change d'état à l'arrêt selon la préférence configurée.
 - Le résultat reste récupérable via le bouton Copier, y compris lorsqu'une autre fenêtre reçoit le focus pendant la transcription.
-- Une erreur de microphone ou de modèle indisponible est affichée clairement et ne provoque pas de collage parasite.
+- Une erreur de microphone, d'authentification ou de réseau vers le fournisseur de transcription est affichée clairement et ne provoque pas de collage parasite.
 - Fermer l'overlay ne quitte pas l'application; l'application reste disponible via la zone de notification.
+- Décocher la case d'historisation empêche la création de nouveaux fichiers d'historique ; la recocher reprend l'historisation dès la dictée suivante.
+- Sélectionner une entrée dans la liste déroulante d'historique l'affiche dans le module Dernière transcription et permet de la copier.
+- Le bouton d'ouverture de dossier ouvre le dossier d'historique dans l'explorateur Windows.
 
 ## 9. Limites connues
 
 - Windows peut empêcher une application non privilégiée de donner le focus ou d'envoyer un collage à une fenêtre exécutée avec des privilèges administrateur. Le comportement doit alors rester sûr : texte conservé dans le presse-papiers et message visible.
 - Certaines applications n'acceptent pas le collage standard ou le filtrent : elles ne pourront pas être garanties par le MVP.
-- La première utilisation d'un modèle Whisper peut demander son téléchargement ou son installation. La stratégie exacte de distribution des modèles est à décider avant développement.
-- Les performances et la consommation mémoire dépendent fortement du modèle choisi et du matériel.
+- La transcription nécessite une connexion réseau active et un accès valide (clé API) au fournisseur configuré ; en cas d'indisponibilité réseau ou de quota dépassé, aucune transcription n'est produite.
+- L'audio de chaque dictée quitte la machine et est envoyé au fournisseur de transcription configuré ; le choix d'un fournisseur de confiance reste sous la responsabilité de l'utilisateur.
+- La clé API du fournisseur est stockée en clair dans le fichier de configuration local dans le MVP ; sa protection repose sur les permissions du profil Windows de l'utilisateur.
+- Les performances et la latence perçue dépendent du fournisseur de transcription choisi et de la qualité de la connexion réseau plutôt que du matériel local.
 
-## 10. Décisions à valider
+## 10. Décisions validées le 2026-09-06
 
-1. Le raccourci proposé `Ctrl+Alt+Space` convient-il comme valeur initiale ?
-2. Le MVP doit-il fonctionner uniquement avec des modèles Whisper téléchargés localement, ou proposer aussi une transcription distante optionnelle ?
-3. Souhaites-tu une diction « appuyer une fois pour démarrer, une fois pour arrêter » uniquement, ou aussi un mode « maintenir pour parler » dans une version ultérieure ?
-4. L'overlay doit-il être une seule fenêtre avec deux modules, ou deux petites fenêtres réellement indépendantes ? La présente spécification retient une fenêtre unique à modules indépendants.
-5. Veux-tu conserver un historique local des transcriptions ? La présente spécification ne conserve que la dernière.
-6. Est-ce que .NET 10 est le bon socle pour le projet, ou veux-tu rester sur .NET 8 LTS pour une compatibilité plus conservatrice ?
+1. Raccourci initial : `Ctrl+Alt+Space`.
+2. Transcription exclusivement distante (Whisper API et successeurs, pas de modèle local), configurée par fichier comme l'ancienne extension VS Code. Un seul fournisseur implémenté au MVP, derrière une interface extensible.
+3. Mode dictée : appuyer/appuyer uniquement (pas de « maintenir pour parler » au MVP).
+4. Overlay : une fenêtre unique à modules indépendants (REC, Dernière transcription, Historique).
+5. Historique local activable : un fichier texte horodaté par dictée, texte seul (pas d'audio), consultable via la liste déroulante du module Historique et le bouton d'ouverture de dossier.
+6. Socle : .NET 10 LTS.
 
 ## 11. Hors périmètre du MVP
 
 - Transcription en direct mot par mot pendant la parole.
 - Commandes vocales.
-- Historique, recherche et export des transcriptions.
-- Synchronisation cloud.
+- Recherche indexée dans l'historique, export structuré (CSV/JSON) et synchronisation cloud de l'historique.
 - Correction linguistique ou reformulation par IA.
 - Installation/distribution automatisée et signature de l'exécutable.
 - Support de plusieurs utilisateurs Windows ou de plusieurs systèmes d'exploitation.
+- Mode « maintenir pour parler » et fournisseurs de transcription multiples simultanés.
