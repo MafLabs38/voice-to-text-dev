@@ -44,7 +44,16 @@
         </StackPanel>
 
         <TextBlock Text="Modèle de transcription" FontWeight="Bold" Margin="0,0,0,4" />
-        <ComboBox x:Name="ModelComboBox" DisplayMemberPath="Label" SelectedValuePath="Id" Margin="0,0,0,12" />
+        <ComboBox x:Name="ModelComboBox" SelectedValuePath="Id" Margin="0,0,0,12">
+            <!-- ItemTemplate (pas DisplayMemberPath) : DisplayMemberPath ne peuple pas
+                 SelectionBoxItemTemplate, donc la zone fermée retombait sur le ToString() brut
+                 de l'objet avec le template ComboBox personnalisé ci-dessous. -->
+            <ComboBox.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
 
         <TextBlock Text="Langue" FontWeight="Bold" Margin="0,0,0,4" />
         <ComboBox x:Name="LanguageComboBox" Margin="0,0,0,12">
@@ -54,7 +63,13 @@
         </ComboBox>
 
         <TextBlock Text="Microphone" FontWeight="Bold" Margin="0,0,0,4" />
-        <ComboBox x:Name="MicrophoneComboBox" DisplayMemberPath="Name" SelectedValuePath="Id" Margin="0,0,0,12" />
+        <ComboBox x:Name="MicrophoneComboBox" SelectedValuePath="Id" Margin="0,0,0,12">
+            <ComboBox.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding Name}" />
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
 
         <TextBlock Text="Durée maximale d'enregistrement (secondes)" FontWeight="Bold" Margin="0,0,0,4" />
         <TextBox x:Name="MaxDurationTextBox" Margin="0,0,0,12" />
