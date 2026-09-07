@@ -8,7 +8,7 @@
 
 Créer une application Windows autonome permettant d'enregistrer une dictée à partir d'un raccourci clavier global, de la transcrire via un service de transcription distant (API compatible Whisper ou l'un de ses successeurs), puis de coller automatiquement le texte obtenu dans le contrôle qui avait le focus avant l'enregistrement.
 
-L'application doit proposer une expérience plus simple que l'ancienne extension VS Code : aucune extension à installer, une sélection claire du périphérique audio, un fournisseur de transcription distant configurable (endpoint, clé API, modèle) et une interface de réglages durable.
+L'application doit proposer une expérience plus simple que l'ancienne extension VS Code : aucune extension à installer, une sélection claire du périphérique audio, une clé API et un modèle de transcription configurables (clé stockée chiffrée) et une interface de réglages durable.
 
 ## 2. Utilisateur cible et périmètre
 
@@ -55,7 +55,7 @@ Le périmètre couvre Windows 10 et Windows 11. Il ne couvre pas macOS, Linux, l
 
 ### 4.4 Transcription distante
 
-- Transcription réalisée via un service distant compatible Whisper (API HTTP), configuré par fichier — endpoint, clé API, modèle — sur le même principe de configuration que l'ancienne extension VS Code.
+- Transcription réalisée via l'API OpenAI (endpoint fixe, non configurable dans le MVP). Le modèle est choisi dans un catalogue éditable (`models.json`). La clé API est saisie dans les Paramètres et stockée chiffrée (DPAPI, liée au compte Windows) dans un fichier séparé des réglages généraux — jamais en clair, jamais dans le fichier JSON de settings.
 - Le MVP implémente un seul fournisseur, derrière une interface permettant d'en ajouter d'autres par la suite sans réécrire le reste de l'application.
 - Langue configurable, avec `Français` par défaut et détection automatique disponible si le fournisseur le permet.
 - Préservation de la ponctuation produite par le modèle.
@@ -103,7 +103,7 @@ Les paramètres sont persistés par utilisateur Windows et accessibles sans arr�
 - Raccourci global.
 - Microphone d'entrée.
 - Durée maximale d'enregistrement.
-- Fournisseur de transcription distante (endpoint, clé API, modèle).
+- Clé API OpenAI (stockée chiffrée) et modèle de transcription.
 - Langue de transcription.
 - Affichage de l'indicateur `REC`.
 - Affichage de la dernière transcription.
@@ -133,11 +133,11 @@ Pendant `Enregistrement`, un nouvel appui sur le raccourci arrête la capture. P
 
 - **Plateforme :** .NET 10 LTS et WPF, architecture MVVM.
 - **Capture audio :** NAudio, en WASAPI capture ou capture du périphérique sélectionné.
-- **Transcription :** client HTTP .NET vers un service distant compatible Whisper, authentifié par clé API, derrière une interface permettant d'ajouter d'autres fournisseurs.
-- **Raccourci global :** API Windows `RegisterHotKey` via interop contrôlée.
+- **Transcription :** client HTTP .NET vers l'API OpenAI, derrière une interface permettant d'ajouter d'autres fournisseurs par la suite.
+- **Raccourci global :** API Windows `RegisterHotKey` via interop contrôlée (ou hook souris bas niveau pour un déclencheur bouton de souris).
 - **Fenêtre active et collage :** Win32 (`GetForegroundWindow`, `SetForegroundWindow`, presse-papiers WPF, envoi de `Ctrl+V`).
 - **Zone de notification :** composant compatible WPF, choisi après vérification de compatibilité .NET 10.
-- **Configuration :** fichier JSON dans le répertoire applicatif utilisateur (`LocalApplicationData`), incluant l'endpoint et la clé API du fournisseur de transcription.
+- **Configuration :** fichier JSON dans le répertoire applicatif utilisateur (`LocalApplicationData`) pour les réglages généraux (aucune clé API dedans). La clé API est chiffrée via `ProtectedData` (DPAPI, portée utilisateur courant) dans un fichier séparé.
 - **Historique :** un fichier texte horodaté par dictée, dans un sous-dossier dédié du répertoire applicatif utilisateur.
 
 Les fichiers audio temporaires doivent être supprimés après transcription, sauf option explicite de diagnostic ajoutée ultérieurement.
@@ -178,7 +178,7 @@ Hotkey  AudioRecorder TranscriptionClient TextPaster HistoryStore
 - Certaines applications n'acceptent pas le collage standard ou le filtrent : elles ne pourront pas être garanties par le MVP.
 - La transcription nécessite une connexion réseau active et un accès valide (clé API) au fournisseur configuré ; en cas d'indisponibilité réseau ou de quota dépassé, aucune transcription n'est produite.
 - L'audio de chaque dictée quitte la machine et est envoyé au fournisseur de transcription configuré ; le choix d'un fournisseur de confiance reste sous la responsabilité de l'utilisateur.
-- La clé API du fournisseur est stockée en clair dans le fichier de configuration local dans le MVP ; sa protection repose sur les permissions du profil Windows de l'utilisateur.
+- La clé API du fournisseur est stockée chiffrée (DPAPI, liée au compte Windows courant) dans un fichier dédié, jamais en clair et jamais mélangée aux réglages généraux.
 - Les performances et la latence perçue dépendent du fournisseur de transcription choisi et de la qualité de la connexion réseau plutôt que du matériel local.
 
 ## 10. Décisions validées le 2026-09-06
