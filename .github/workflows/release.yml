@@ -1,0 +1,61 @@
+name: Build and release installer
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Résout la version depuis le tag
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/v}"
+          else
+            version="0.0.0-dev"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Installe Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Publie l'appli (self-contained, single-file, win-x64)
+        run: >
+          dotnet publish src/VoiceToText/VoiceToText.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+
+      - name: Compile l'installeur
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ steps.version.outputs.version }} installer\VoiceToTextDictation.iss
+
+      - name: Publie la release GitHub
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            --title "Dictée universelle ${{ steps.version.outputs.version }}" `
+            --generate-notes `
+            "dist/VoiceToTextDictation-Setup-${{ steps.version.outputs.version }}.exe"
+
+      - name: Dépose l'installeur comme artefact du run (branches non taguées)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: dist/*.exe
