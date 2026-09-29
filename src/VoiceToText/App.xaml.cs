@@ -120,6 +120,16 @@ public partial class App : System.Windows.Application
         SingleInstance.ActionReceived += action => Dispatcher.BeginInvoke(new Action(() => HandleIpcAction(action)));
         SingleInstance.StartListening();
         SetupTaskbarJumpList();
+
+        // Revérifie/réaffiche une fois le reste du démarrage terminé (priorité la plus basse du
+        // dispatcher) : l'overlay se plaçait par défaut sur l'écran "primaire" Windows quand
+        // aucune position mémorisée valide n'existait — presque toujours l'écran du portable sur
+        // une config dockée, jamais regardé par l'utilisateur (cf. OverlayWindow.FallbackWorkArea).
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            _overlayWindow.RevalidatePosition();
+            _overlayWindow.Show();
+        }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
     }
 
     /// <summary>

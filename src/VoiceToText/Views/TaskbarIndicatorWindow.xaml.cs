@@ -13,7 +13,12 @@ namespace VoiceToText.Views;
 public partial class TaskbarIndicatorWindow : Window
 {
     private bool _allowClose;
-    private DateTime _lastHandledActivation = DateTime.MinValue;
+    // Initialisé à "maintenant" (pas DateTime.MinValue) : ShowActivated="False" réduit mais
+    // n'élimine pas totalement le risque qu'une activation Windows survienne au tout premier
+    // Show() au démarrage (course de focus avec la fenêtre overlay, elle aussi en cours
+    // d'apparition au même moment) — l'anti-rebond doit donc couvrir dès la construction de cet
+    // objet, pas seulement à partir de la première activation gérée.
+    private DateTime _lastHandledActivation = DateTime.UtcNow;
 
     public TaskbarIndicatorWindow(Action onActivatedRequest)
     {
