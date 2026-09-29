@@ -50,6 +50,17 @@ vpk pack --packId VoiceToTextDictationApp --packVersion 0.2.0 --packDir publish 
 
 Une release GitHub (installeur + paquets de mise à jour inclus) est aussi générée automatiquement par [`.github/workflows/release.yml`](.github/workflows/release.yml) à chaque tag `vX.Y.Z` poussé.
 
+## Publier une release
+
+`main` représente toujours une version livrable : une PR vers `main` ne peut être fusionnée que si un tag `vX.Y.Z` pointe déjà sur son commit ([`.github/workflows/require-tag-on-main.yml`](.github/workflows/require-tag-on-main.yml), vérifié comme check obligatoire). Le tag doit donc être posé **avant** la fusion, pas après :
+
+```powershell
+git checkout develop
+git tag v0.3.0
+git push origin v0.3.0   # déclenche déjà la publication de la release
+# puis ouvrir/fusionner la PR develop -> main normalement
+```
+
 ## Documentation
 
 La spécification fonctionnelle complète est dans [`docs/specification-v1.md`](docs/specification-v1.md).
