@@ -30,32 +30,38 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Installe Inno Setup
-        run: choco install innosetup --no-progress -y
+      - name: Installe l'outil de packaging Velopack (vpk)
+        run: dotnet tool install -g vpk --version 1.2.158
 
-      - name: Publie l'appli (self-contained, single-file, win-x64)
+      - name: Publie l'appli (self-contained, win-x64)
+        # Pas de PublishSingleFile : Velopack a besoin des fichiers individuels (exe + dll) pour
+        # calculer les deltas entre versions et générer un exécutable conscient des mises à jour.
         run: >
           dotnet publish src/VoiceToText/VoiceToText.csproj
           -c Release -r win-x64 --self-contained true
-          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish
 
-      - name: Compile l'installeur
-        run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ steps.version.outputs.version }} installer\VoiceToTextDictation.iss
+      - name: Empaquette avec Velopack (installeur + paquets de mise à jour)
+        # packId volontairement différent du nom du dossier de données de l'appli
+        # (%LocalAppData%\VoiceToTextDictation, cf. AppPaths.RootDirectory) : Velopack installe
+        # sous %LocalAppData%\<packId>\, un même nom aurait mélangé install Velopack et données user.
+        run: >
+          vpk pack --packId VoiceToTextDictationApp --packVersion ${{ steps.version.outputs.version }}
+          --packDir publish --mainExe VoiceToText.exe
+          --packTitle "Dictée universelle" --packAuthors MafLabs38
+          --icon src/VoiceToText/Assets/icon.ico --runtime win-x64 -o dist
 
-      - name: Publie la release GitHub
+      - name: Publie la release GitHub (installeur + assets de mise à jour automatique)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" `
-            --title "Dictée universelle ${{ steps.version.outputs.version }}" `
-            --generate-notes `
-            "dist/VoiceToTextDictation-Setup-${{ steps.version.outputs.version }}.exe"
+          vpk upload github --repoUrl https://github.com/MafLabs38/voice-to-text-dev --outputDir dist --token $env:GH_TOKEN --tag ${{ github.ref_name }} --publish true
+          gh release edit "${{ github.ref_name }}" --title "Dictée universelle ${{ steps.version.outputs.version }}" --generate-notes
 
-      - name: Dépose l'installeur comme artefact du run (branches non taguées)
+      - name: Dépose les paquets comme artefact du run (branches non taguées)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
           name: installer
-          path: dist/*.exe
+          path: dist/*

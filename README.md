@@ -22,11 +22,15 @@ Dicte n'importe où sous Windows : un raccourci global (touche ou bouton de sour
 
 ## Installation
 
-Télécharge le dernier installeur depuis l'onglet **[Releases](../../releases/latest)**, exécute-le (installation par utilisateur, sans droits admin requis) et lance l'application. Elle démarre réduite dans la zone de notification.
+Télécharge le dernier installeur (`VoiceToTextDictation-win-Setup.exe`) depuis l'onglet **[Releases](../../releases/latest)**, exécute-le (installation par utilisateur, sans droits admin requis) et lance l'application. Elle démarre réduite dans la zone de notification.
 
 > L'installeur n'est pas signé : Windows (SmartScreen / Smart App Control) peut afficher un avertissement au premier lancement — clique sur *Informations complémentaires → Exécuter quand même*.
 
 Ouvre ensuite **Paramètres…** depuis l'icône de la zone de notification pour renseigner ta clé API OpenAI, choisir ton déclencheur et personnaliser le reste.
+
+**Mise à jour automatique** : l'appli vérifie en tâche de fond, à chaque démarrage, si une nouvelle release est disponible sur ce dépôt GitHub, la télécharge et l'applique au redémarrage suivant (jamais pendant une dictée en cours). Aucune action manuelle nécessaire une fois installée via un des installeurs `Setup.exe` publiés depuis la version qui intègre ce mécanisme.
+
+> Migration depuis une installation antérieure à ce mécanisme (ex. `v0.1.0`, installée via l'ancien installeur Inno Setup) : une seule réinstallation manuelle depuis le nouvel installeur `Setup.exe` est nécessaire — les mises à jour suivantes seront ensuite automatiques.
 
 ## Compiler depuis les sources
 
@@ -37,14 +41,14 @@ dotnet build src/VoiceToText/VoiceToText.csproj
 dotnet run --project src/VoiceToText/VoiceToText.csproj
 ```
 
-Pour construire l'installeur localement (nécessite [Inno Setup 6](https://jrsoftware.org/isinfo.php)) :
+Pour construire l'installeur localement (nécessite l'outil [Velopack](https://velopack.io) `vpk`, `dotnet tool install -g vpk`) :
 
 ```powershell
-dotnet publish src/VoiceToText/VoiceToText.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=0.1.0 installer\VoiceToTextDictation.iss
+dotnet publish src/VoiceToText/VoiceToText.csproj -c Release -r win-x64 --self-contained true -o publish
+vpk pack --packId VoiceToTextDictationApp --packVersion 0.2.0 --packDir publish --mainExe VoiceToText.exe --packTitle "Dictée universelle" --packAuthors MafLabs38 --icon src/VoiceToText/Assets/icon.ico --runtime win-x64 -o dist
 ```
 
-Une release GitHub (installeur inclus) est aussi générée automatiquement par [`.github/workflows/release.yml`](.github/workflows/release.yml) à chaque tag `vX.Y.Z` poussé.
+Une release GitHub (installeur + paquets de mise à jour inclus) est aussi générée automatiquement par [`.github/workflows/release.yml`](.github/workflows/release.yml) à chaque tag `vX.Y.Z` poussé.
 
 ## Documentation
 

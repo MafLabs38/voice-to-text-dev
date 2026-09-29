@@ -108,8 +108,9 @@ public sealed class DictationCoordinator : INotifyPropertyChanged, IDisposable
         var settings = _getSettings();
         try
         {
+            var deviceId = PreferredDeviceResolver.Resolve(settings.MicrophoneDeviceId, settings.SecondaryMicrophoneDeviceId);
             _textPaster.RememberForegroundWindow();
-            _audioRecorder.Start(settings.MicrophoneDeviceId);
+            _audioRecorder.Start(deviceId);
             State = DictationState.Recording;
 
             _maxDurationTimer.Interval = TimeSpan.FromSeconds(Math.Max(1, settings.MaxRecordingSeconds));
@@ -130,6 +131,12 @@ public sealed class DictationCoordinator : INotifyPropertyChanged, IDisposable
         {
             return;
         }
+
+        // Passe à Transcribing tout de suite, avant même d'attendre l'arrêt effectif du flux
+        // audio (qui peut prendre quelques centaines de ms) : sans ça, l'utilisateur qui reclique
+        // pour arrêter ne voit aucun changement pendant ce délai et a l'impression que le clic n'a
+        // pas été pris en compte.
+        State = DictationState.Transcribing;
 
         var settings = _getSettings();
 
@@ -154,7 +161,6 @@ public sealed class DictationCoordinator : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        State = DictationState.Transcribing;
         try
         {
             var result = await _transcriptionClient.TranscribeAsync(

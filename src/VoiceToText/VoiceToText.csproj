@@ -9,10 +9,19 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>VoiceToText</RootNamespace>
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <!-- WPF génère son propre Main() automatiquement ; Velopack doit s'exécuter avant tout le
+         reste au démarrage, donc on fournit notre propre Main (dans App.xaml.cs) à la place. -->
+    <StartupObject>VoiceToText.App</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="Velopack" Version="1.2.158" />
   </ItemGroup>
 
   <ItemGroup>
