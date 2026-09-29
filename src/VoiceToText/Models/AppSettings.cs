@@ -18,13 +18,19 @@ public sealed class AppSettings
 
     public int MaxRecordingSeconds { get; set; } = 60;
 
+    /// <summary>Périphérique de capture prioritaire (favori n°1). Utilisé s'il est actif au moment de l'enregistrement.</summary>
     public string? MicrophoneDeviceId { get; set; }
+
+    /// <summary>Périphérique de capture secondaire (favori n°2, utilisé si le prioritaire est absent/débranché).</summary>
+    public string? SecondaryMicrophoneDeviceId { get; set; }
 
     public string TranscriptionModel { get; set; } = "gpt-transcribe";
 
     public string Language { get; set; } = "fr";
 
     public bool ShowRecIndicator { get; set; } = true;
+
+    public bool ShowTaskbarIndicator { get; set; } = true;
 
     public bool ShowLastTranscription { get; set; } = true;
 
@@ -35,6 +41,9 @@ public sealed class AppSettings
     public double? OverlayLeft { get; set; }
 
     public double? OverlayTop { get; set; }
+
+    /// <summary>DeviceName Windows (ex. "\\.\DISPLAY2") de l'écran sur lequel OverlayLeft/Top ont été enregistrés.</summary>
+    public string? OverlayScreenDeviceName { get; set; }
 
     public bool AlwaysOnTop { get; set; } = true;
 

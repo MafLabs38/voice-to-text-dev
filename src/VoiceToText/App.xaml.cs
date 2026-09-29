@@ -1,4 +1,6 @@
 using System.Windows;
+using Velopack;
+using Velopack.Sources;
 using VoiceToText.Models;
 using VoiceToText.Services;
 using VoiceToText.ViewModels;
@@ -8,6 +10,29 @@ namespace VoiceToText;
 
 public partial class App : System.Windows.Application
 {
+    private const string UpdateRepoUrl = "https://github.com/MafLabs38/voice-to-text-dev";
+
+    // WPF génère automatiquement un Main(), mais Velopack doit s'exécuter avant tout le reste
+    // (avant même la construction de l'objet App) pour intercepter correctement les hooks
+    // d'installation/désinstallation/mise à jour. Nécessite <StartupObject> dans le .csproj.
+    [STAThread]
+    private static void Main(string[] args)
+    {
+        VelopackApp.Build().Run();
+
+        // Une instance tourne déjà : l'action éventuellement demandée (ex. depuis la Jump List
+        // de la barre des tâches) lui a été transmise par SingleInstance.TryAcquire — ce
+        // processus-ci n'a rien de plus à faire (jamais de 2e tray/overlay en double).
+        if (!SingleInstance.TryAcquire(args))
+        {
+            return;
+        }
+
+        var app = new App();
+        app.InitializeComponent();
+        app.Run();
+    }
+
     private SettingsStore _settingsStore = null!;
     private ApiKeyStore _apiKeyStore = null!;
     private TranscriptionModelCatalogService _modelCatalogService = null!;
@@ -20,6 +45,8 @@ public partial class App : System.Windows.Application
     private TrayIconService _trayIconService = null!;
     private OverlayWindow _overlayWindow = null!;
     private AudioRecorderService _audioRecorder = null!;
+    private TaskbarIndicatorWindow _taskbarIndicatorWindow = null!;
+    private TaskbarBadgeService _taskbarBadgeService = null!;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -40,7 +67,7 @@ public partial class App : System.Windows.Application
         _overlayViewModel = new OverlayViewModel(_coordinator);
         _overlayViewModel.UpdateModuleVisibilitySettings(_settings.ShowRecIndicator, _settings.ShowLastTranscription);
 
-        _overlayWindow = new OverlayWindow(_overlayViewModel, _settings.OverlayLeft, _settings.OverlayTop, OnOverlayPositionChanged)
+        _overlayWindow = new OverlayWindow(_overlayViewModel, _settings.OverlayLeft, _settings.OverlayTop, _settings.OverlayScreenDeviceName, OnOverlayPositionChanged)
         {
             Topmost = _settings.AlwaysOnTop,
             Opacity = _settings.OverlayOpacity,
@@ -52,11 +79,27 @@ public partial class App : System.Windows.Application
         _trayIconService.OpenSettingsRequested += (_, _) => OpenSettings();
         _trayIconService.ShowLastTranscriptionRequested += (_, _) => _overlayWindow.Show();
         _trayIconService.ExitRequested += (_, _) => Shutdown();
+
+        // Fenêtre dédiée uniquement à obtenir un bouton dans la barre des tâches (visible sur
+        // tous les écrans si l'option Windows correspondante est activée), sur lequel on superpose
+        // une pastille pendant l'enregistrement — l'overlay flottant, lui, reste hors barre des
+        // tâches et n'est visible que sur l'écran où il est positionné.
+        _taskbarIndicatorWindow = new TaskbarIndicatorWindow(ToggleOverlay);
+        var taskbarHwnd = new System.Windows.Interop.WindowInteropHelper(_taskbarIndicatorWindow).EnsureHandle();
+        _taskbarBadgeService = new TaskbarBadgeService(taskbarHwnd);
+        ApplyTaskbarIndicatorVisibility();
+
         _coordinator.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(DictationCoordinator.State))
             {
-                _trayIconService.SetActive(_coordinator.State != DictationState.Ready);
+                var active = _coordinator.State != DictationState.Ready;
+                _trayIconService.SetActive(active);
+                _taskbarBadgeService.SetState(_coordinator.State);
+                if (_coordinator.State == DictationState.Ready)
+                {
+                    PrewarmMicrophone();
+                }
             }
         };
 
@@ -71,6 +114,131 @@ public partial class App : System.Windows.Application
 
         ApplyTrigger();
         ApplyOverlayToggleHotkey();
+        PrewarmMicrophone();
+        CheckForUpdates();
+
+        SingleInstance.ActionReceived += action => Dispatcher.BeginInvoke(new Action(() => HandleIpcAction(action)));
+        SingleInstance.StartListening();
+        SetupTaskbarJumpList();
+    }
+
+    /// <summary>
+    /// Exécute une action demandée par une seconde instance (ex. clic sur un item de la Jump
+    /// List de la barre des tâches) — mêmes actions que le menu de la zone de notification.
+    /// </summary>
+    private void HandleIpcAction(string action)
+    {
+        switch (action)
+        {
+            case "ToggleOverlay":
+                ToggleOverlay();
+                break;
+            case "OpenSettings":
+                OpenSettings();
+                break;
+            case "ShowLastTranscription":
+                _overlayWindow.Show();
+                break;
+            case "Exit":
+                Shutdown();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Enregistre la Jump List (clic droit sur le bouton de barre des tâches) avec les mêmes
+    /// actions que le menu de la zone de notification. Chaque entrée relance l'exe avec un
+    /// argument — Windows ne permet pas d'appeler directement du code du processus déjà en
+    /// cours — d'où SingleInstance qui route cet argument vers <see cref="HandleIpcAction"/>.
+    /// </summary>
+    private void SetupTaskbarJumpList()
+    {
+        var exePath = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(exePath))
+        {
+            return;
+        }
+
+        var jumpList = new System.Windows.Shell.JumpList();
+        jumpList.JumpItems.Add(CreateJumpTask("Afficher/masquer l'overlay", "ToggleOverlay", exePath));
+        jumpList.JumpItems.Add(CreateJumpTask("Paramètres…", "OpenSettings", exePath));
+        jumpList.JumpItems.Add(CreateJumpTask("Dernière transcription", "ShowLastTranscription", exePath));
+        jumpList.JumpItems.Add(CreateJumpTask("Quitter", "Exit", exePath));
+        System.Windows.Shell.JumpList.SetJumpList(this, jumpList);
+        jumpList.Apply();
+    }
+
+    private static System.Windows.Shell.JumpTask CreateJumpTask(string title, string action, string exePath) => new()
+    {
+        Title = title,
+        ApplicationPath = exePath,
+        Arguments = action,
+        IconResourcePath = exePath,
+        IconResourceIndex = 0,
+    };
+
+    private void ApplyTaskbarIndicatorVisibility()
+    {
+        if (_settings.ShowTaskbarIndicator)
+        {
+            _taskbarIndicatorWindow.Show();
+        }
+        else
+        {
+            _taskbarIndicatorWindow.Hide();
+        }
+    }
+
+    /// <summary>
+    /// Vérifie en tâche de fond s'il existe une nouvelle version sur les releases GitHub du
+    /// dépôt, la télécharge, puis l'applique en relançant l'appli — mais seulement si aucune
+    /// dictée n'est en cours, pour ne jamais couper un enregistrement ou une transcription.
+    /// Silencieux et best-effort : pas de connexion, dépôt inaccessible, ou appli lancée hors
+    /// installation Velopack (ex. depuis les sources en debug) → on continue normalement.
+    /// </summary>
+    private void CheckForUpdates()
+    {
+        Dispatcher.BeginInvoke(new Func<Task>(async () =>
+        {
+            try
+            {
+                var updateManager = new UpdateManager(new GithubSource(UpdateRepoUrl, null, false));
+                if (!updateManager.IsInstalled)
+                {
+                    return;
+                }
+
+                var updateInfo = await updateManager.CheckForUpdatesAsync();
+                if (updateInfo is null)
+                {
+                    return;
+                }
+
+                await updateManager.DownloadUpdatesAsync(updateInfo);
+
+                if (_coordinator.State == DictationState.Ready)
+                {
+                    updateManager.ApplyUpdatesAndRestart(updateInfo);
+                }
+            }
+            catch
+            {
+            }
+        }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+    }
+
+    /// <summary>
+    /// Initialise le microphone en avance, en tâche de fond, pour que la première pression du
+    /// déclencheur (au démarrage, ou après un changement de périphérique) soit déjà instantanée
+    /// plutôt que de payer le coût d'initialisation WASAPI au moment où l'utilisateur appuie.
+    /// </summary>
+    private void PrewarmMicrophone()
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var deviceId = PreferredDeviceResolver.Resolve(_settings.MicrophoneDeviceId, _settings.SecondaryMicrophoneDeviceId);
+            _audioRecorder.Prewarm(deviceId);
+        }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
     }
 
     private void ApplyTrigger()
@@ -134,13 +302,16 @@ public partial class App : System.Windows.Application
             ApplyTrigger();
             ApplyOverlayToggleHotkey();
             ThemeManager.Apply(_settings.Theme, _settings.PrimaryColorHex);
+            PrewarmMicrophone();
+            ApplyTaskbarIndicatorVisibility();
         }
     }
 
-    private void OnOverlayPositionChanged(double left, double top)
+    private void OnOverlayPositionChanged(double left, double top, string? screenDeviceName)
     {
         _settings.OverlayLeft = left;
         _settings.OverlayTop = top;
+        _settings.OverlayScreenDeviceName = screenDeviceName;
         _settingsStore.Save(_settings);
     }
 
@@ -150,6 +321,8 @@ public partial class App : System.Windows.Application
         _mouseTriggerService.Dispose();
         _overlayToggleHotkeyService.Dispose();
         _trayIconService.Dispose();
+        _taskbarBadgeService.Dispose();
+        _taskbarIndicatorWindow.ForceClose();
         _audioRecorder.Dispose();
         _coordinator.Dispose();
         base.OnExit(e);
