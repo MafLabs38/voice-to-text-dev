@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity version="1.0.0.0" name="VoiceToText.app" />
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+
+  <!--
+    Sans manifeste, l'appli tourne en DPI-awareness par défaut (System, pas Per-Monitor), ce qui
+    désynchronise Window.Left/Top (WPF) et System.Windows.Forms.Screen.Bounds des vraies
+    coordonnées physiques sur une config multi-écrans avec des échelles DPI différentes — l'overlay
+    se retrouvait positionné hors de tout écran réel sans qu'aucun signal Windows ne le révèle
+    (Visible=true, non "cloaked"). PerMonitorV2 aligne tout sur les vraies coordonnées physiques.
+  -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+    </windowsSettings>
+  </application>
+</assembly>
