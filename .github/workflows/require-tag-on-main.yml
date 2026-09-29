@@ -1,0 +1,31 @@
+name: Require version tag before merging to main
+
+# Sécurité structurelle : main représente toujours une version livrable en prod, donc on ne doit
+# jamais pouvoir y fusionner une PR sans qu'un tag vX.Y.Z existe déjà sur le commit fusionné.
+# GitHub ne peut bloquer une fusion qu'avant qu'elle existe : le tag doit donc être posé sur la
+# branche source (ex. develop) AVANT d'ouvrir/fusionner la PR vers main, pas après.
+#
+# Ce check doit être configuré comme "required status check" dans les règles de branche de main
+# pour avoir un effet bloquant (voir README ou demander à Claude de le faire via `gh api`).
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Vérifie qu'un tag vX.Y.Z pointe sur ce commit
+        shell: bash
+        run: |
+          tag=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+          if [ -z "$tag" ]; then
+            echo "::error::Aucun tag vX.Y.Z ne pointe sur ce commit. Pousse le tag de version sur cette branche AVANT de fusionner vers main (ex. 'git tag v0.3.0 && git push origin v0.3.0')."
+            exit 1
+          fi
+          echo "OK : tag $tag trouvé sur ce commit."
