@@ -16,8 +16,13 @@ jobs:
   check-tag:
     runs-on: ubuntu-latest
     steps:
+      # Sur un événement pull_request, actions/checkout récupère par défaut le commit de fusion
+      # SYNTHÉTIQUE que GitHub prévisualise (source fusionnée dans la cible), pas le vrai commit
+      # de tête de la branche source — ce commit de prévisualisation n'existe pas en tant que tel
+      # et n'a donc jamais de tag dessus. On force explicitement le vrai commit de tête de la PR.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Vérifie qu'un tag vX.Y.Z pointe sur ce commit
