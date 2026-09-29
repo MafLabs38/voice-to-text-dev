@@ -139,17 +139,25 @@ public sealed class TaskbarBadgeService : IDisposable
 
     private static IntPtr[] BuildPulseFrames()
     {
-        // Aller-retour d'opacité (100% -> 35% -> 100%) sur ces valeurs, pour un pouls fluide.
-        int[] alphas = { 255, 210, 165, 120, 90, 120, 165, 210 };
-        var frames = new IntPtr[alphas.Length];
-        for (var i = 0; i < alphas.Length; i++)
+        // Un vrai clignotement (allumé/éteint net), pas un fondu progressif — un fondu ne se lit
+        // pas comme un voyant REC. Un petit cadre sombre encadre le point rouge en permanence pour
+        // bien le lire comme un indicateur d'enregistrement plutôt qu'une simple pastille ambiguë.
+        bool[] lit = { true, true, true, false, false, false };
+        var frames = new IntPtr[lit.Length];
+        for (var i = 0; i < lit.Length; i++)
         {
             using var bitmap = new Bitmap(16, 16);
             using (var g = Graphics.FromImage(bitmap))
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                using var brush = new SolidBrush(Color.FromArgb(alphas[i], 255, 0, 0));
-                g.FillEllipse(brush, 1, 1, 14, 14);
+                using var frameBrush = new SolidBrush(Color.FromArgb(255, 24, 24, 24));
+                g.FillRectangle(frameBrush, 0, 0, 16, 16);
+
+                if (lit[i])
+                {
+                    using var dotBrush = new SolidBrush(Color.FromArgb(255, 255, 0, 0));
+                    g.FillEllipse(dotBrush, 4, 4, 8, 8);
+                }
             }
 
             frames[i] = bitmap.GetHicon();
