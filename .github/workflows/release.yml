@@ -61,7 +61,7 @@ jobs:
           # release existe déjà à ce stade via vpk upload) : on récupère les notes auto-générées
           # via l'API REST puis on les applique explicitement.
           $notes = gh api "repos/${{ github.repository }}/releases/generate-notes" -f tag_name="${{ github.ref_name }}" --jq .body
-          gh release edit "${{ github.ref_name }}" --title "Dictée universelle ${{ steps.version.outputs.version }}" --notes $notes
+          gh release edit "${{ github.ref_name }}" --title "Dictée universelle ${{ steps.version.outputs.version }}" --notes "$notes"
 
       - name: Dépose les paquets comme artefact du run (branches non taguées)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
