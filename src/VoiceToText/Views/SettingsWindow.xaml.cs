@@ -32,6 +32,19 @@ public partial class SettingsWindow : Window
     {
         InitializeComponent();
 
+        // WindowStartupLocation=CenterScreen centre sur l'écran PRIMAIRE quel que soit l'écran
+        // sur lequel on a cliqué (pas de Owner défini) — sur une config multi-écrans où l'écran
+        // primaire est celui du portable (jamais regardé), la fenêtre semblait ne jamais s'ouvrir.
+        // On centre plutôt sur l'écran qui contient le curseur, une fois la taille réelle connue
+        // (SizeToContent="Height" : la hauteur n'est pas encore mesurée dans le constructeur).
+        Loaded += (_, _) =>
+        {
+            var cursorScreen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
+            var workArea = cursorScreen.WorkingArea;
+            Left = workArea.Left + (workArea.Width - ActualWidth) / 2;
+            Top = workArea.Top + (workArea.Height - ActualHeight) / 2;
+        };
+
         _settingsStore = settingsStore;
         _apiKeyStore = apiKeyStore;
 
@@ -44,9 +57,11 @@ public partial class SettingsWindow : Window
             MouseButton = currentSettings.MouseButton,
             MaxRecordingSeconds = currentSettings.MaxRecordingSeconds,
             MicrophoneDeviceId = currentSettings.MicrophoneDeviceId,
+            SecondaryMicrophoneDeviceId = currentSettings.SecondaryMicrophoneDeviceId,
             TranscriptionModel = currentSettings.TranscriptionModel,
             Language = currentSettings.Language,
             ShowRecIndicator = currentSettings.ShowRecIndicator,
+            ShowTaskbarIndicator = currentSettings.ShowTaskbarIndicator,
             ShowLastTranscription = currentSettings.ShowLastTranscription,
             HistoryEnabled = currentSettings.HistoryEnabled,
             ShowHistoryModule = currentSettings.ShowHistoryModule,
@@ -79,10 +94,17 @@ public partial class SettingsWindow : Window
         ModelComboBox.ItemsSource = modelCatalogService.GetAvailableModels();
         ModelComboBox.SelectedValue = _workingCopy.TranscriptionModel;
 
-        var devices = new List<AudioDeviceInfo> { new("", "(Périphérique par défaut du système)") };
-        devices.AddRange(AudioDeviceEnumerator.GetInputDevices());
-        MicrophoneComboBox.ItemsSource = devices;
+        var inputDevices = AudioDeviceEnumerator.GetInputDevices();
+
+        var primaryDevices = new List<AudioDeviceInfo> { new("", "(Périphérique par défaut du système)") };
+        primaryDevices.AddRange(inputDevices);
+        MicrophoneComboBox.ItemsSource = primaryDevices;
         MicrophoneComboBox.SelectedValue = _workingCopy.MicrophoneDeviceId ?? "";
+
+        var secondaryDevices = new List<AudioDeviceInfo> { new("", "(Aucun)") };
+        secondaryDevices.AddRange(inputDevices);
+        SecondaryMicrophoneComboBox.ItemsSource = secondaryDevices;
+        SecondaryMicrophoneComboBox.SelectedValue = _workingCopy.SecondaryMicrophoneDeviceId ?? "";
 
         foreach (var item in LanguageComboBox.Items)
         {
@@ -97,6 +119,7 @@ public partial class SettingsWindow : Window
 
         MaxDurationTextBox.Text = _workingCopy.MaxRecordingSeconds.ToString();
         ShowRecIndicatorCheckBox.IsChecked = _workingCopy.ShowRecIndicator;
+        ShowTaskbarIndicatorCheckBox.IsChecked = _workingCopy.ShowTaskbarIndicator;
         ShowLastTranscriptionCheckBox.IsChecked = _workingCopy.ShowLastTranscription;
         AlwaysOnTopCheckBox.IsChecked = _workingCopy.AlwaysOnTop;
         LaunchAtStartupCheckBox.IsChecked = _workingCopy.LaunchAtStartup;
@@ -346,8 +369,12 @@ public partial class SettingsWindow : Window
         _workingCopy.MicrophoneDeviceId = string.IsNullOrEmpty((string)MicrophoneComboBox.SelectedValue)
             ? null
             : (string)MicrophoneComboBox.SelectedValue;
+        _workingCopy.SecondaryMicrophoneDeviceId = string.IsNullOrEmpty((string)SecondaryMicrophoneComboBox.SelectedValue)
+            ? null
+            : (string)SecondaryMicrophoneComboBox.SelectedValue;
         _workingCopy.Language = (string)((System.Windows.Controls.ComboBoxItem)LanguageComboBox.SelectedItem).Tag;
         _workingCopy.ShowRecIndicator = ShowRecIndicatorCheckBox.IsChecked ?? true;
+        _workingCopy.ShowTaskbarIndicator = ShowTaskbarIndicatorCheckBox.IsChecked ?? true;
         _workingCopy.ShowLastTranscription = ShowLastTranscriptionCheckBox.IsChecked ?? true;
         _workingCopy.AlwaysOnTop = AlwaysOnTopCheckBox.IsChecked ?? true;
         _workingCopy.OverlayOpacity = OverlayOpacitySlider.Value;
