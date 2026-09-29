@@ -37,14 +37,45 @@ public partial class OverlayWindow : Window
         var screens = System.Windows.Forms.Screen.AllScreens
             .Select(s => new OverlayPositioning.ScreenInfo(s.DeviceName, s.Bounds))
             .ToList();
-        var primaryWorkArea = (System.Windows.Forms.Screen.PrimaryScreen ?? System.Windows.Forms.Screen.AllScreens[0]).WorkingArea;
 
-        (Left, Top) = OverlayPositioning.ResolvePosition(left, top, screenDeviceName, screens, primaryWorkArea);
+        (Left, Top) = OverlayPositioning.ResolvePosition(left, top, screenDeviceName, screens, FallbackWorkArea());
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
         Dispatcher.BeginInvoke(new Action(() => ApplyPreferredPosition(_preferredLeft, _preferredTop, _preferredScreenDeviceName)));
+    }
+
+    /// <summary>
+    /// Revérifie, au plus tard possible (après la fin du démarrage), que la position ACTUELLE de
+    /// la fenêtre tombe bien sur un écran réellement connecté à cet instant précis, plutôt que de
+    /// se fier à un calcul fait plus tôt.
+    /// </summary>
+    public void RevalidatePosition()
+    {
+        var onScreen = System.Windows.Forms.Screen.AllScreens
+            .Any(s => s.Bounds.Contains(new System.Drawing.Point((int)Left, (int)Top)));
+        if (onScreen)
+        {
+            return;
+        }
+
+        var fallback = FallbackWorkArea();
+        Left = fallback.Right - 160;
+        Top = fallback.Bottom - 80;
+    }
+
+    /// <summary>
+    /// Écran de repli quand aucune position mémorisée valide n'est disponible : le plus grand
+    /// écran connecté plutôt que l'écran "primaire" Windows — sur un portable docké à des écrans
+    /// externes, l'écran primaire est presque toujours l'écran du portable, que l'utilisateur ne
+    /// regarde jamais (le repli sur celui-ci rendait l'overlay perçu comme invisible).
+    /// </summary>
+    private static System.Drawing.Rectangle FallbackWorkArea()
+    {
+        var screens = System.Windows.Forms.Screen.AllScreens;
+        var largest = screens.OrderByDescending(s => (long)s.Bounds.Width * s.Bounds.Height).First();
+        return largest.WorkingArea;
     }
 
     private void RootBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
