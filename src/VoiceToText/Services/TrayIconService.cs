@@ -7,21 +7,29 @@ public sealed class TrayIconService : IDisposable
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Drawing.Icon _idleIcon;
     private readonly System.Drawing.Icon _activeIcon;
+    private readonly ToolStripMenuItem _updateMenuItem;
 
     public event EventHandler? ToggleOverlayRequested;
     public event EventHandler? OpenSettingsRequested;
     public event EventHandler? ShowLastTranscriptionRequested;
     public event EventHandler? ExitRequested;
+    public event EventHandler? UpdateRequested;
 
     public TrayIconService()
     {
         (_idleIcon, _activeIcon) = TrayIconFactory.CreateTrayIcons();
+
+        _updateMenuItem = new ToolStripMenuItem("Mise à jour disponible…", null, (_, _) => UpdateRequested?.Invoke(this, EventArgs.Empty))
+        {
+            Visible = false,
+        };
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("Afficher/masquer l'overlay", null, (_, _) => ToggleOverlayRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add("Paramètres…", null, (_, _) => OpenSettingsRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add("Dernière transcription", null, (_, _) => ShowLastTranscriptionRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_updateMenuItem);
         menu.Items.Add("Quitter", null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty));
 
         _notifyIcon = new NotifyIcon
@@ -36,6 +44,19 @@ public sealed class TrayIconService : IDisposable
     public void SetActive(bool active)
     {
         _notifyIcon.Icon = active ? _activeIcon : _idleIcon;
+    }
+
+    /// <summary>Affiche/masque l'entrée « Mise à jour disponible » du menu, avec le numéro de version.</summary>
+    public void SetUpdateAvailable(string? version)
+    {
+        if (string.IsNullOrEmpty(version))
+        {
+            _updateMenuItem.Visible = false;
+            return;
+        }
+
+        _updateMenuItem.Text = $"Mise à jour disponible (v{version})…";
+        _updateMenuItem.Visible = true;
     }
 
     public void Dispose()

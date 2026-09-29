@@ -1,5 +1,7 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using VoiceToText.Models;
 using VoiceToText.Services;
 
@@ -28,21 +30,35 @@ public partial class SettingsWindow : Window
     public bool SettingsSaved { get; private set; }
 
     public SettingsWindow(AppSettings currentSettings, SettingsStore settingsStore, ApiKeyStore apiKeyStore,
-        TranscriptionModelCatalogService modelCatalogService)
+        TranscriptionModelCatalogService modelCatalogService, string? pendingUpdateVersion = null, Action? onInstallUpdate = null)
     {
         InitializeComponent();
 
+        if (!string.IsNullOrEmpty(pendingUpdateVersion))
+        {
+            UpdateAvailablePanel.Visibility = Visibility.Visible;
+            UpdateAvailableText.Text = $"Nouvelle version disponible : v{pendingUpdateVersion}";
+            InstallUpdateButton.Click += (_, _) =>
+            {
+                onInstallUpdate?.Invoke();
+                Close();
+            };
+        }
+
         // WindowStartupLocation=CenterScreen centre sur l'écran PRIMAIRE quel que soit l'écran
-        // sur lequel on a cliqué (pas de Owner défini) — sur une config multi-écrans où l'écran
-        // primaire est celui du portable (jamais regardé), la fenêtre semblait ne jamais s'ouvrir.
-        // On centre plutôt sur l'écran qui contient le curseur, une fois la taille réelle connue
-        // (SizeToContent="Height" : la hauteur n'est pas encore mesurée dans le constructeur).
-        Loaded += (_, _) =>
+        // sur lequel on a cliqué — sur une config multi-écrans où le primaire est le portable
+        // (jamais regardé), la fenêtre semblait invisible. On la place plutôt sur l'écran du
+        // curseur, via Win32 SetWindowPos en pixels physiques directs (PAS Window.Left/Top,
+        // dont la valeur se fait retransformer de façon incontrôlable sous PerMonitorV2 dans
+        // cet environnement — constaté empiriquement : la position lue après assignation ne
+        // correspondait jamais à la valeur assignée, quelle que soit la formule employée).
+        SourceInitialized += (_, _) =>
         {
             var cursorScreen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
             var workArea = cursorScreen.WorkingArea;
-            Left = workArea.Left + (workArea.Width - ActualWidth) / 2;
-            Top = workArea.Top + (workArea.Height - ActualHeight) / 2;
+            var hwnd = new WindowInteropHelper(this).Handle;
+            SetWindowPos(hwnd, IntPtr.Zero, workArea.Left + 40, workArea.Top + 40, 0, 0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
         };
 
         _settingsStore = settingsStore;
@@ -400,4 +416,11 @@ public partial class SettingsWindow : Window
         DialogResult = false;
         Close();
     }
+
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOZORDER = 0x0004;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 }

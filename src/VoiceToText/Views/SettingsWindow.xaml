@@ -15,6 +15,13 @@
         </ResourceDictionary>
     </Window.Resources>
     <StackPanel Margin="16">
+        <Border x:Name="UpdateAvailablePanel" Visibility="Collapsed" Background="#3B82F6" CornerRadius="4" Padding="10,8" Margin="0,0,0,16">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" x:Name="InstallUpdateButton" Content="Installer maintenant" Padding="8,2" />
+                <TextBlock x:Name="UpdateAvailableText" VerticalAlignment="Center" Foreground="White" FontWeight="Bold" TextWrapping="Wrap" />
+            </DockPanel>
+        </Border>
+
         <TextBlock Text="Apparence" FontWeight="Bold" Margin="0,0,0,4" />
         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
             <RadioButton x:Name="LightThemeRadio" Content="Clair" GroupName="Theme" Margin="0,0,16,0"
