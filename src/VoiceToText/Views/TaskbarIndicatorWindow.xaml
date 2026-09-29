@@ -6,5 +6,6 @@
         ShowInTaskbar="True"
         WindowStartupLocation="Manual"
         Left="-3000" Top="-3000"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        ShowActivated="False">
 </Window>

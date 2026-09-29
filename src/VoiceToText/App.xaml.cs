@@ -291,6 +291,20 @@ public partial class App : System.Windows.Application
     private void OpenSettings()
     {
         var settingsWindow = new SettingsWindow(_settings, _settingsStore, _apiKeyStore, _modelCatalogService);
+
+        // Quand la fenêtre est ouverte via la Jump List (clic droit sur la barre des tâches), la
+        // demande arrive par IPC depuis un processus tiers déjà terminé au moment où on l'affiche
+        // — Windows refuse alors silencieusement de donner le focus au premier plan (verrou
+        // anti-vol de focus). Activate()/Show() seuls ne suffisent pas dans ce cas ; l'astuce
+        // Topmost on/off force la fenêtre au-dessus malgré le verrou.
+        settingsWindow.Loaded += (_, _) =>
+        {
+            settingsWindow.Activate();
+            settingsWindow.Topmost = true;
+            settingsWindow.Topmost = false;
+            settingsWindow.Focus();
+        };
+
         var result = settingsWindow.ShowDialog();
 
         if (result == true && settingsWindow.SettingsSaved)
