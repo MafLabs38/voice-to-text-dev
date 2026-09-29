@@ -47,6 +47,12 @@ public partial class App : System.Windows.Application
     private AudioRecorderService _audioRecorder = null!;
     private TaskbarIndicatorWindow _taskbarIndicatorWindow = null!;
     private TaskbarBadgeService _taskbarBadgeService = null!;
+    private UpdateManager? _updateManager;
+    private UpdateInfo? _pendingUpdate;
+    private readonly System.Windows.Threading.DispatcherTimer _updateCheckTimer = new()
+    {
+        Interval = TimeSpan.FromHours(4),
+    };
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -79,6 +85,7 @@ public partial class App : System.Windows.Application
         _trayIconService.OpenSettingsRequested += (_, _) => OpenSettings();
         _trayIconService.ShowLastTranscriptionRequested += (_, _) => _overlayWindow.Show();
         _trayIconService.ExitRequested += (_, _) => Shutdown();
+        _trayIconService.UpdateRequested += (_, _) => TryApplyPendingUpdate();
 
         // Fenêtre dédiée uniquement à obtenir un bouton dans la barre des tâches (visible sur
         // tous les écrans si l'option Windows correspondante est activée), sur lequel on superpose
@@ -99,6 +106,7 @@ public partial class App : System.Windows.Application
                 if (_coordinator.State == DictationState.Ready)
                 {
                     PrewarmMicrophone();
+                    TryApplyPendingUpdate();
                 }
             }
         };
@@ -116,6 +124,8 @@ public partial class App : System.Windows.Application
         ApplyOverlayToggleHotkey();
         PrewarmMicrophone();
         CheckForUpdates();
+        _updateCheckTimer.Tick += (_, _) => CheckForUpdates();
+        _updateCheckTimer.Start();
 
         SingleInstance.ActionReceived += action => Dispatcher.BeginInvoke(new Action(() => HandleIpcAction(action)));
         SingleInstance.StartListening();
@@ -201,10 +211,13 @@ public partial class App : System.Windows.Application
 
     /// <summary>
     /// Vérifie en tâche de fond s'il existe une nouvelle version sur les releases GitHub du
-    /// dépôt, la télécharge, puis l'applique en relançant l'appli — mais seulement si aucune
-    /// dictée n'est en cours, pour ne jamais couper un enregistrement ou une transcription.
-    /// Silencieux et best-effort : pas de connexion, dépôt inaccessible, ou appli lancée hors
-    /// installation Velopack (ex. depuis les sources en debug) → on continue normalement.
+    /// dépôt et la télécharge. Rappelée au démarrage puis périodiquement (<see cref="_updateCheckTimer"/>)
+    /// tant que l'appli tourne, pour ne pas dépendre d'un redémarrage pour détecter une release.
+    /// Une fois téléchargée, l'appli l'applique immédiatement si aucune dictée n'est en cours
+    /// (<see cref="TryApplyPendingUpdate"/>) ; sinon elle reste en attente, visible dans le menu
+    /// de la zone de notification et dans Paramètres, jusqu'au prochain retour à l'état prêt ou
+    /// à un clic explicite. Silencieux et best-effort : pas de connexion, dépôt inaccessible, ou
+    /// appli lancée hors installation Velopack (ex. depuis les sources en debug) → sans effet.
     /// </summary>
     private void CheckForUpdates()
     {
@@ -212,29 +225,48 @@ public partial class App : System.Windows.Application
         {
             try
             {
-                var updateManager = new UpdateManager(new GithubSource(UpdateRepoUrl, null, false));
-                if (!updateManager.IsInstalled)
+                _updateManager ??= new UpdateManager(new GithubSource(UpdateRepoUrl, null, false));
+                if (!_updateManager.IsInstalled)
                 {
                     return;
                 }
 
-                var updateInfo = await updateManager.CheckForUpdatesAsync();
+                var updateInfo = await _updateManager.CheckForUpdatesAsync();
                 if (updateInfo is null)
                 {
                     return;
                 }
 
-                await updateManager.DownloadUpdatesAsync(updateInfo);
+                await _updateManager.DownloadUpdatesAsync(updateInfo);
+                _pendingUpdate = updateInfo;
+                _trayIconService.SetUpdateAvailable(updateInfo.TargetFullRelease.Version.ToString());
 
-                if (_coordinator.State == DictationState.Ready)
-                {
-                    updateManager.ApplyUpdatesAndRestart(updateInfo);
-                }
+                TryApplyPendingUpdate();
             }
             catch
             {
             }
         }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+    }
+
+    /// <summary>
+    /// Applique la mise à jour téléchargée et relance l'appli — soit automatiquement dès que
+    /// l'état repasse à Prêt, soit sur clic explicite (menu de la zone de notification ou bouton
+    /// dans Paramètres), jamais pendant une dictée en cours.
+    /// </summary>
+    private void TryApplyPendingUpdate()
+    {
+        if (_updateManager is null || _pendingUpdate is null)
+        {
+            return;
+        }
+
+        if (_coordinator.State != DictationState.Ready)
+        {
+            return;
+        }
+
+        _updateManager.ApplyUpdatesAndRestart(_pendingUpdate);
     }
 
     /// <summary>
@@ -300,7 +332,8 @@ public partial class App : System.Windows.Application
 
     private void OpenSettings()
     {
-        var settingsWindow = new SettingsWindow(_settings, _settingsStore, _apiKeyStore, _modelCatalogService);
+        var pendingUpdateVersion = _pendingUpdate?.TargetFullRelease.Version.ToString();
+        var settingsWindow = new SettingsWindow(_settings, _settingsStore, _apiKeyStore, _modelCatalogService, pendingUpdateVersion, TryApplyPendingUpdate);
 
         // Quand la fenêtre est ouverte via la Jump List (clic droit sur la barre des tâches), la
         // demande arrive par IPC depuis un processus tiers déjà terminé au moment où on l'affiche
@@ -341,6 +374,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _updateCheckTimer.Stop();
         _hotkeyService.Dispose();
         _mouseTriggerService.Dispose();
         _overlayToggleHotkeyService.Dispose();
