@@ -31,16 +31,31 @@
         </StackPanel>
         <StackPanel x:Name="PrimaryColorPanel" Orientation="Horizontal" Margin="0,0,0,16" />
 
-        <TextBlock Text="Déclencheur (touche ou bouton de souris)" FontWeight="Bold" Margin="0,0,0,4" />
+        <TextBlock Text="Déclencheur principal (touche ou bouton de souris, toujours actif)" FontWeight="Bold" Margin="0,0,0,4" TextWrapping="Wrap" />
         <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
             <Button x:Name="TriggerCaptureButton" Content="Capturer…" Click="CaptureTrigger_Click" Padding="8,2" />
             <TextBlock x:Name="TriggerText" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray" />
+        </StackPanel>
+
+        <TextBlock Text="Déclencheur secondaire (activable / désactivable)" FontWeight="Bold" Margin="0,0,0,4" TextWrapping="Wrap" />
+        <CheckBox x:Name="SecondaryTriggerEnabledCheckBox" Margin="0,0,0,4">
+            <TextBlock Text="Activé (également basculable depuis le menu de la zone de notification et de la barre des tâches)" TextWrapping="Wrap" Width="360" />
+        </CheckBox>
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+            <Button x:Name="SecondaryTriggerCaptureButton" Content="Capturer…" Click="CaptureSecondaryTrigger_Click" Padding="8,2" />
+            <TextBlock x:Name="SecondaryTriggerText" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray" />
         </StackPanel>
 
         <TextBlock Text="Raccourci d'affichage/masquage de l'overlay" FontWeight="Bold" Margin="0,0,0,4" />
         <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
             <Button x:Name="OverlayToggleCaptureButton" Content="Capturer…" Click="CaptureOverlayToggle_Click" Padding="8,2" />
             <TextBlock x:Name="OverlayToggleText" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray" />
+        </StackPanel>
+
+        <TextBlock Text="Raccourci d'activation/désactivation du déclencheur secondaire" FontWeight="Bold" Margin="0,0,0,4" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+            <Button x:Name="SecondaryToggleCaptureButton" Content="Capturer…" Click="CaptureSecondaryToggle_Click" Padding="8,2" />
+            <TextBlock x:Name="SecondaryToggleText" VerticalAlignment="Center" Margin="8,0,0,0" Foreground="Gray" />
         </StackPanel>
 
         <TextBlock Text="Clé API OpenAI" FontWeight="Bold" Margin="0,0,0,4" />

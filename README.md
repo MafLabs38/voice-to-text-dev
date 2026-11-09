@@ -14,6 +14,7 @@ Dicte n'importe où sous Windows : un raccourci global (touche ou bouton de sour
 ## Fonctionnalités
 
 - **Déclencheur configurable** : raccourci clavier ou bouton de souris (milieu, latéral) — capturé en direct depuis les Paramètres.
+- **Déclencheur secondaire activable à la volée** : un second raccourci (ex. clic molette), défini comme le principal, que l'on active ou désactive d'un clic depuis le menu de la zone de notification ou de la barre des tâches, ou via un raccourci clavier dédié (utile pour le couper en jeu).
 - **Transcription** via l'API OpenAI (`gpt-transcribe` par défaut), catalogue de modèles éditable, langue configurable.
 - **Collage universel** : le texte est copié dans le presse-papiers puis collé automatiquement dans la fenêtre qui avait le focus au début de l'enregistrement.
 - **Overlay flottant** : indicateur d'enregistrement toujours visible, dernière transcription avec bouton Copier, opacité réglable, bouton pour le minimiser + raccourci dédié pour l'afficher/masquer.
