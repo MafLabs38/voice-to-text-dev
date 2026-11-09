@@ -13,15 +13,24 @@ public partial class SettingsWindow : Window
     private readonly SettingsStore _settingsStore;
     private readonly ApiKeyStore _apiKeyStore;
 
-    private TriggerKind _capturedTriggerKind;
-    private ModifierKeys _capturedModifiers;
-    private Key _capturedKey;
-    private MouseTriggerButton _capturedMouseButton;
-    private bool _isCapturingTrigger;
+    /// <summary>Valeur capturée d'un déclencheur d'enregistrement (touche ou bouton de souris).</summary>
+    private sealed class TriggerSlot
+    {
+        public TriggerKind Kind;
+        public ModifierKeys Modifiers;
+        public Key Key;
+        public MouseTriggerButton MouseButton;
+    }
 
-    private ModifierKeys _capturedOverlayToggleModifiers;
-    private Key _capturedOverlayToggleKey;
-    private bool _isCapturingOverlayToggle;
+    private readonly TriggerSlot _primaryTrigger = new();
+    private readonly TriggerSlot _secondaryTrigger = new();
+
+    // Déclencheur en cours de capture (null = aucune capture).
+    private TriggerSlot? _capturingSlot;
+
+    private readonly TriggerSlot _overlayToggleHotkey = new();
+    private readonly TriggerSlot _secondaryToggleHotkey = new();
+    private (TriggerSlot Slot, System.Windows.Controls.Button Button, System.Windows.Controls.TextBlock Text)? _capturingHotkey;
 
     private AppTheme _selectedTheme;
     private string _selectedPrimaryColorHex = "#3B82F6";
@@ -71,6 +80,11 @@ public partial class SettingsWindow : Window
             HotkeyModifiers = currentSettings.HotkeyModifiers,
             HotkeyKey = currentSettings.HotkeyKey,
             MouseButton = currentSettings.MouseButton,
+            SecondaryTriggerEnabled = currentSettings.SecondaryTriggerEnabled,
+            SecondaryTriggerKind = currentSettings.SecondaryTriggerKind,
+            SecondaryHotkeyModifiers = currentSettings.SecondaryHotkeyModifiers,
+            SecondaryHotkeyKey = currentSettings.SecondaryHotkeyKey,
+            SecondaryMouseButton = currentSettings.SecondaryMouseButton,
             MaxRecordingSeconds = currentSettings.MaxRecordingSeconds,
             MicrophoneDeviceId = currentSettings.MicrophoneDeviceId,
             SecondaryMicrophoneDeviceId = currentSettings.SecondaryMicrophoneDeviceId,
@@ -88,19 +102,30 @@ public partial class SettingsWindow : Window
             LaunchAtStartup = currentSettings.LaunchAtStartup,
             OverlayToggleModifiers = currentSettings.OverlayToggleModifiers,
             OverlayToggleKey = currentSettings.OverlayToggleKey,
+            SecondaryToggleModifiers = currentSettings.SecondaryToggleModifiers,
+            SecondaryToggleKey = currentSettings.SecondaryToggleKey,
             Theme = currentSettings.Theme,
             PrimaryColorHex = currentSettings.PrimaryColorHex,
         };
 
-        _capturedTriggerKind = _workingCopy.TriggerKind;
-        _capturedModifiers = _workingCopy.HotkeyModifiers;
-        _capturedKey = _workingCopy.HotkeyKey;
-        _capturedMouseButton = _workingCopy.MouseButton;
+        _primaryTrigger.Kind = _workingCopy.TriggerKind;
+        _primaryTrigger.Modifiers = _workingCopy.HotkeyModifiers;
+        _primaryTrigger.Key = _workingCopy.HotkeyKey;
+        _primaryTrigger.MouseButton = _workingCopy.MouseButton;
         UpdateTriggerDisplay();
 
-        _capturedOverlayToggleModifiers = _workingCopy.OverlayToggleModifiers;
-        _capturedOverlayToggleKey = _workingCopy.OverlayToggleKey;
-        UpdateOverlayToggleDisplay();
+        _secondaryTrigger.Kind = _workingCopy.SecondaryTriggerKind;
+        _secondaryTrigger.Modifiers = _workingCopy.SecondaryHotkeyModifiers;
+        _secondaryTrigger.Key = _workingCopy.SecondaryHotkeyKey;
+        _secondaryTrigger.MouseButton = _workingCopy.SecondaryMouseButton;
+        SecondaryTriggerEnabledCheckBox.IsChecked = _workingCopy.SecondaryTriggerEnabled;
+        UpdateTriggerDisplay();
+
+        _overlayToggleHotkey.Modifiers = _workingCopy.OverlayToggleModifiers;
+        _overlayToggleHotkey.Key = _workingCopy.OverlayToggleKey;
+        _secondaryToggleHotkey.Modifiers = _workingCopy.SecondaryToggleModifiers;
+        _secondaryToggleHotkey.Key = _workingCopy.SecondaryToggleKey;
+        UpdateHotkeyDisplays();
 
         _selectedTheme = _workingCopy.Theme;
         _selectedPrimaryColorHex = _workingCopy.PrimaryColorHex;
@@ -146,18 +171,24 @@ public partial class SettingsWindow : Window
 
     public AppSettings ResultSettings => _workingCopy;
 
-    private void CaptureTrigger_Click(object sender, RoutedEventArgs e)
+    private void CaptureTrigger_Click(object sender, RoutedEventArgs e) => BeginTriggerCapture(_primaryTrigger);
+
+    private void CaptureSecondaryTrigger_Click(object sender, RoutedEventArgs e) => BeginTriggerCapture(_secondaryTrigger);
+
+    private void BeginTriggerCapture(TriggerSlot slot)
     {
-        _isCapturingTrigger = true;
+        _capturingSlot = slot;
         TriggerCaptureButton.IsEnabled = false;
-        TriggerText.Text = "Appuie sur une touche ou un bouton de souris (Échap pour annuler)…";
+        SecondaryTriggerCaptureButton.IsEnabled = false;
+        (slot == _primaryTrigger ? TriggerText : SecondaryTriggerText).Text =
+            "Appuie sur une touche ou un bouton de souris (Échap pour annuler)…";
         PreviewKeyDown += SettingsWindow_PreviewKeyDownForCapture;
         PreviewMouseDown += SettingsWindow_PreviewMouseDownForCapture;
     }
 
     private void SettingsWindow_PreviewKeyDownForCapture(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (!_isCapturingTrigger)
+        if (_capturingSlot is not { } slot)
         {
             return;
         }
@@ -167,7 +198,7 @@ public partial class SettingsWindow : Window
 
         if (key == Key.Escape)
         {
-            EndCapture(applyCapture: false);
+            EndCapture();
             return;
         }
 
@@ -176,15 +207,15 @@ public partial class SettingsWindow : Window
             return; // On attend une vraie touche, pas seulement le modificateur.
         }
 
-        _capturedTriggerKind = TriggerKind.Keyboard;
-        _capturedModifiers = Keyboard.Modifiers;
-        _capturedKey = key;
-        EndCapture(applyCapture: true);
+        slot.Kind = TriggerKind.Keyboard;
+        slot.Modifiers = Keyboard.Modifiers;
+        slot.Key = key;
+        EndCapture();
     }
 
     private void SettingsWindow_PreviewMouseDownForCapture(object sender, MouseButtonEventArgs e)
     {
-        if (!_isCapturingTrigger)
+        if (_capturingSlot is not { } slot)
         {
             return;
         }
@@ -203,15 +234,16 @@ public partial class SettingsWindow : Window
         }
 
         e.Handled = true;
-        _capturedTriggerKind = TriggerKind.Mouse;
-        _capturedMouseButton = button.Value;
-        EndCapture(applyCapture: true);
+        slot.Kind = TriggerKind.Mouse;
+        slot.MouseButton = button.Value;
+        EndCapture();
     }
 
-    private void EndCapture(bool applyCapture)
+    private void EndCapture()
     {
-        _isCapturingTrigger = false;
+        _capturingSlot = null;
         TriggerCaptureButton.IsEnabled = true;
+        SecondaryTriggerCaptureButton.IsEnabled = true;
         PreviewKeyDown -= SettingsWindow_PreviewKeyDownForCapture;
         PreviewMouseDown -= SettingsWindow_PreviewMouseDownForCapture;
         UpdateTriggerDisplay();
@@ -219,22 +251,33 @@ public partial class SettingsWindow : Window
 
     private void UpdateTriggerDisplay()
     {
-        TriggerText.Text = _capturedTriggerKind == TriggerKind.Keyboard
-            ? FormatKeyboardTrigger(_capturedModifiers, _capturedKey)
-            : FormatMouseTrigger(_capturedMouseButton);
+        TriggerText.Text = FormatTrigger(_primaryTrigger);
+        SecondaryTriggerText.Text = FormatTrigger(_secondaryTrigger);
     }
 
-    private void CaptureOverlayToggle_Click(object sender, RoutedEventArgs e)
+    private static string FormatTrigger(TriggerSlot slot) => slot.Kind == TriggerKind.Keyboard
+        ? TriggerFormatter.FormatKeyboard(slot.Modifiers, slot.Key)
+        : TriggerFormatter.FormatMouse(slot.MouseButton);
+
+    // --- Raccourcis clavier simples (overlay, déclencheur secondaire) : touche uniquement, sans souris ---
+
+    private void CaptureOverlayToggle_Click(object sender, RoutedEventArgs e) =>
+        BeginHotkeyCapture(_overlayToggleHotkey, OverlayToggleCaptureButton, OverlayToggleText);
+
+    private void CaptureSecondaryToggle_Click(object sender, RoutedEventArgs e) =>
+        BeginHotkeyCapture(_secondaryToggleHotkey, SecondaryToggleCaptureButton, SecondaryToggleText);
+
+    private void BeginHotkeyCapture(TriggerSlot slot, System.Windows.Controls.Button button, System.Windows.Controls.TextBlock text)
     {
-        _isCapturingOverlayToggle = true;
-        OverlayToggleCaptureButton.IsEnabled = false;
-        OverlayToggleText.Text = "Appuie sur une touche (Échap pour annuler)…";
-        PreviewKeyDown += SettingsWindow_PreviewKeyDownForOverlayToggleCapture;
+        _capturingHotkey = (slot, button, text);
+        button.IsEnabled = false;
+        text.Text = "Appuie sur une touche (Échap pour annuler)…";
+        PreviewKeyDown += SettingsWindow_PreviewKeyDownForHotkeyCapture;
     }
 
-    private void SettingsWindow_PreviewKeyDownForOverlayToggleCapture(object sender, System.Windows.Input.KeyEventArgs e)
+    private void SettingsWindow_PreviewKeyDownForHotkeyCapture(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (!_isCapturingOverlayToggle)
+        if (_capturingHotkey is not { } capture)
         {
             return;
         }
@@ -244,7 +287,7 @@ public partial class SettingsWindow : Window
 
         if (key == Key.Escape)
         {
-            EndOverlayToggleCapture();
+            EndHotkeyCapture();
             return;
         }
 
@@ -253,22 +296,27 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        _capturedOverlayToggleModifiers = Keyboard.Modifiers;
-        _capturedOverlayToggleKey = key;
-        EndOverlayToggleCapture();
+        capture.Slot.Modifiers = Keyboard.Modifiers;
+        capture.Slot.Key = key;
+        EndHotkeyCapture();
     }
 
-    private void EndOverlayToggleCapture()
+    private void EndHotkeyCapture()
     {
-        _isCapturingOverlayToggle = false;
-        OverlayToggleCaptureButton.IsEnabled = true;
-        PreviewKeyDown -= SettingsWindow_PreviewKeyDownForOverlayToggleCapture;
-        UpdateOverlayToggleDisplay();
+        if (_capturingHotkey is { } capture)
+        {
+            capture.Button.IsEnabled = true;
+        }
+
+        _capturingHotkey = null;
+        PreviewKeyDown -= SettingsWindow_PreviewKeyDownForHotkeyCapture;
+        UpdateHotkeyDisplays();
     }
 
-    private void UpdateOverlayToggleDisplay()
+    private void UpdateHotkeyDisplays()
     {
-        OverlayToggleText.Text = FormatKeyboardTrigger(_capturedOverlayToggleModifiers, _capturedOverlayToggleKey);
+        OverlayToggleText.Text = TriggerFormatter.FormatKeyboard(_overlayToggleHotkey.Modifiers, _overlayToggleHotkey.Key);
+        SecondaryToggleText.Text = TriggerFormatter.FormatKeyboard(_secondaryToggleHotkey.Modifiers, _secondaryToggleHotkey.Key);
     }
 
     private void BuildPrimaryColorSwatches()
@@ -326,25 +374,6 @@ public partial class SettingsWindow : Window
         Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or
         Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin;
 
-    private static string FormatKeyboardTrigger(ModifierKeys modifiers, Key key)
-    {
-        var parts = new List<string>();
-        if (modifiers.HasFlag(ModifierKeys.Control)) parts.Add("Ctrl");
-        if (modifiers.HasFlag(ModifierKeys.Alt)) parts.Add("Alt");
-        if (modifiers.HasFlag(ModifierKeys.Shift)) parts.Add("Maj");
-        if (modifiers.HasFlag(ModifierKeys.Windows)) parts.Add("Win");
-        parts.Add(key == Key.Space ? "Espace" : key.ToString());
-        return string.Join("+", parts);
-    }
-
-    private static string FormatMouseTrigger(MouseTriggerButton button) => button switch
-    {
-        MouseTriggerButton.Middle => "Bouton milieu de la souris",
-        MouseTriggerButton.XButton1 => "Bouton latéral 1 de la souris",
-        MouseTriggerButton.XButton2 => "Bouton latéral 2 de la souris",
-        _ => button.ToString(),
-    };
-
     private void OverlayOpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (OverlayOpacityText is not null)
@@ -376,10 +405,35 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        _workingCopy.TriggerKind = _capturedTriggerKind;
-        _workingCopy.HotkeyModifiers = _capturedModifiers;
-        _workingCopy.HotkeyKey = _capturedKey;
-        _workingCopy.MouseButton = _capturedMouseButton;
+        var secondaryEnabled = SecondaryTriggerEnabledCheckBox.IsChecked ?? false;
+        var candidate = new AppSettings
+        {
+            TriggerKind = _primaryTrigger.Kind,
+            HotkeyModifiers = _primaryTrigger.Modifiers,
+            HotkeyKey = _primaryTrigger.Key,
+            MouseButton = _primaryTrigger.MouseButton,
+            SecondaryTriggerKind = _secondaryTrigger.Kind,
+            SecondaryHotkeyModifiers = _secondaryTrigger.Modifiers,
+            SecondaryHotkeyKey = _secondaryTrigger.Key,
+            SecondaryMouseButton = _secondaryTrigger.MouseButton,
+        };
+        if (secondaryEnabled && TriggerFormatter.SecondaryDuplicatesPrimary(candidate))
+        {
+            System.Windows.MessageBox.Show(
+                "Le déclencheur secondaire est identique au principal : chaque pression démarrerait puis arrêterait aussitôt l'enregistrement. Choisis un déclencheur différent.",
+                "Paramètres", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _workingCopy.TriggerKind = _primaryTrigger.Kind;
+        _workingCopy.HotkeyModifiers = _primaryTrigger.Modifiers;
+        _workingCopy.HotkeyKey = _primaryTrigger.Key;
+        _workingCopy.MouseButton = _primaryTrigger.MouseButton;
+        _workingCopy.SecondaryTriggerEnabled = secondaryEnabled;
+        _workingCopy.SecondaryTriggerKind = _secondaryTrigger.Kind;
+        _workingCopy.SecondaryHotkeyModifiers = _secondaryTrigger.Modifiers;
+        _workingCopy.SecondaryHotkeyKey = _secondaryTrigger.Key;
+        _workingCopy.SecondaryMouseButton = _secondaryTrigger.MouseButton;
         _workingCopy.MaxRecordingSeconds = maxDuration;
         _workingCopy.TranscriptionModel = (string)ModelComboBox.SelectedValue;
         _workingCopy.MicrophoneDeviceId = string.IsNullOrEmpty((string)MicrophoneComboBox.SelectedValue)
@@ -395,8 +449,10 @@ public partial class SettingsWindow : Window
         _workingCopy.AlwaysOnTop = AlwaysOnTopCheckBox.IsChecked ?? true;
         _workingCopy.OverlayOpacity = OverlayOpacitySlider.Value;
         _workingCopy.LaunchAtStartup = LaunchAtStartupCheckBox.IsChecked ?? false;
-        _workingCopy.OverlayToggleModifiers = _capturedOverlayToggleModifiers;
-        _workingCopy.OverlayToggleKey = _capturedOverlayToggleKey;
+        _workingCopy.OverlayToggleModifiers = _overlayToggleHotkey.Modifiers;
+        _workingCopy.OverlayToggleKey = _overlayToggleHotkey.Key;
+        _workingCopy.SecondaryToggleModifiers = _secondaryToggleHotkey.Modifiers;
+        _workingCopy.SecondaryToggleKey = _secondaryToggleHotkey.Key;
         _workingCopy.Theme = _selectedTheme;
         _workingCopy.PrimaryColorHex = _selectedPrimaryColorHex;
 
