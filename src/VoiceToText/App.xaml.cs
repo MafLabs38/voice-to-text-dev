@@ -41,12 +41,16 @@ public partial class App : System.Windows.Application
     private OverlayViewModel _overlayViewModel = null!;
     private GlobalHotkeyService _hotkeyService = null!;
     private MouseTriggerService _mouseTriggerService = null!;
+    private GlobalHotkeyService _secondaryHotkeyService = null!;
+    private MouseTriggerService _secondaryMouseTriggerService = null!;
     private GlobalHotkeyService _overlayToggleHotkeyService = null!;
+    private GlobalHotkeyService _secondaryToggleHotkeyService = null!;
     private TrayIconService _trayIconService = null!;
     private OverlayWindow _overlayWindow = null!;
     private AudioRecorderService _audioRecorder = null!;
     private TaskbarIndicatorWindow _taskbarIndicatorWindow = null!;
     private TaskbarBadgeService _taskbarBadgeService = null!;
+    private JumpListIconSet? _jumpListIcons;
     private UpdateManager? _updateManager;
     private UpdateInfo? _pendingUpdate;
     private readonly System.Windows.Threading.DispatcherTimer _updateCheckTimer = new()
@@ -81,7 +85,9 @@ public partial class App : System.Windows.Application
         _overlayWindow.Show();
 
         _trayIconService = new TrayIconService();
+        _trayIconService.IsOverlayVisible = () => _overlayWindow.IsVisible;
         _trayIconService.ToggleOverlayRequested += (_, _) => ToggleOverlay();
+        _trayIconService.ToggleSecondaryTriggerRequested += (_, _) => ToggleSecondaryTrigger();
         _trayIconService.OpenSettingsRequested += (_, _) => OpenSettings();
         _trayIconService.ShowLastTranscriptionRequested += (_, _) => _overlayWindow.Show();
         _trayIconService.ExitRequested += (_, _) => Shutdown();
@@ -117,11 +123,21 @@ public partial class App : System.Windows.Application
         _mouseTriggerService = new MouseTriggerService();
         _mouseTriggerService.TriggerActivated += (_, _) => Dispatcher.Invoke(_coordinator.ToggleRecording);
 
+        _secondaryHotkeyService = new GlobalHotkeyService();
+        _secondaryHotkeyService.HotkeyPressed += (_, _) => _coordinator.ToggleRecording();
+
+        _secondaryMouseTriggerService = new MouseTriggerService();
+        _secondaryMouseTriggerService.TriggerActivated += (_, _) => Dispatcher.Invoke(_coordinator.ToggleRecording);
+
         _overlayToggleHotkeyService = new GlobalHotkeyService();
         _overlayToggleHotkeyService.HotkeyPressed += (_, _) => ToggleOverlay();
 
+        _secondaryToggleHotkeyService = new GlobalHotkeyService();
+        _secondaryToggleHotkeyService.HotkeyPressed += (_, _) => ToggleSecondaryTrigger();
+
         ApplyTrigger();
         ApplyOverlayToggleHotkey();
+        ApplySecondaryToggleHotkey();
         PrewarmMicrophone();
         CheckForUpdates();
         _updateCheckTimer.Tick += (_, _) => CheckForUpdates();
@@ -129,7 +145,8 @@ public partial class App : System.Windows.Application
 
         SingleInstance.ActionReceived += action => Dispatcher.BeginInvoke(new Action(() => HandleIpcAction(action)));
         SingleInstance.StartListening();
-        SetupTaskbarJumpList();
+        _overlayWindow.IsVisibleChanged += (_, _) => RefreshTaskbarJumpList();
+        RefreshTaskbarJumpList();
 
         // Revérifie/réaffiche une fois le reste du démarrage terminé (priorité la plus basse du
         // dispatcher) : l'overlay se plaçait par défaut sur l'écran "primaire" Windows quand
@@ -156,6 +173,9 @@ public partial class App : System.Windows.Application
             case "OpenSettings":
                 OpenSettings();
                 break;
+            case "ToggleSecondaryTrigger":
+                ToggleSecondaryTrigger();
+                break;
             case "ShowLastTranscription":
                 _overlayWindow.Show();
                 break;
@@ -170,8 +190,10 @@ public partial class App : System.Windows.Application
     /// actions que le menu de la zone de notification. Chaque entrée relance l'exe avec un
     /// argument — Windows ne permet pas d'appeler directement du code du processus déjà en
     /// cours — d'où SingleInstance qui route cet argument vers <see cref="HandleIpcAction"/>.
+    /// Les entrées « overlay » et « déclencheur secondaire » portent une pastille verte/rouge
+    /// (icône .ico) : la liste est donc reconstruite à chaque changement de l'un de ces états.
     /// </summary>
-    private void SetupTaskbarJumpList()
+    private void RefreshTaskbarJumpList()
     {
         var exePath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(exePath))
@@ -179,21 +201,28 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        // Générées une seule fois par lancement ; un fichier absent retombe sur l'icône de l'appli.
+        var icons = _jumpListIcons ??= JumpListIcons.Generate();
+        var overlayDot = _overlayWindow.IsVisible ? icons.Green : icons.Red;
+        var secondaryDot = _settings.SecondaryTriggerEnabled ? icons.Green : icons.Red;
+
         var jumpList = new System.Windows.Shell.JumpList();
-        jumpList.JumpItems.Add(CreateJumpTask("Afficher/masquer l'overlay", "ToggleOverlay", exePath));
-        jumpList.JumpItems.Add(CreateJumpTask("Paramètres…", "OpenSettings", exePath));
-        jumpList.JumpItems.Add(CreateJumpTask("Dernière transcription", "ShowLastTranscription", exePath));
-        jumpList.JumpItems.Add(CreateJumpTask("Quitter", "Exit", exePath));
+        jumpList.JumpItems.Add(CreateJumpTask("Afficher/masquer l'overlay", "ToggleOverlay", exePath, overlayDot));
+        jumpList.JumpItems.Add(CreateJumpTask(
+            $"Déclencheur secondaire : {(_settings.SecondaryTriggerEnabled ? "ON" : "OFF")}", "ToggleSecondaryTrigger", exePath, secondaryDot));
+        jumpList.JumpItems.Add(CreateJumpTask("Paramètres…", "OpenSettings", exePath, icons.Settings));
+        jumpList.JumpItems.Add(CreateJumpTask("Dernière transcription", "ShowLastTranscription", exePath, icons.Copy));
+        jumpList.JumpItems.Add(CreateJumpTask("Quitter", "Exit", exePath, icons.Exit));
         System.Windows.Shell.JumpList.SetJumpList(this, jumpList);
         jumpList.Apply();
     }
 
-    private static System.Windows.Shell.JumpTask CreateJumpTask(string title, string action, string exePath) => new()
+    private static System.Windows.Shell.JumpTask CreateJumpTask(string title, string action, string exePath, string? iconPath) => new()
     {
         Title = title,
         ApplicationPath = exePath,
         Arguments = action,
-        IconResourcePath = exePath,
+        IconResourcePath = iconPath ?? exePath,
         IconResourceIndex = 0,
     };
 
@@ -283,10 +312,17 @@ public partial class App : System.Windows.Application
         }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
     }
 
+    /// <summary>
+    /// (Ré)arme le déclencheur principal (toujours actif) puis le secondaire (seulement s'il est
+    /// activé). Un secondaire identique au principal est ignoré : il doublerait chaque pression
+    /// et l'enregistrement démarrerait puis s'arrêterait aussitôt.
+    /// </summary>
     private void ApplyTrigger()
     {
         _hotkeyService.Unregister();
         _mouseTriggerService.Stop();
+        _secondaryHotkeyService.Unregister();
+        _secondaryMouseTriggerService.Stop();
 
         try
         {
@@ -303,6 +339,41 @@ public partial class App : System.Windows.Application
         {
             System.Windows.MessageBox.Show(ex.Message, "Dictée universelle", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+
+        if (_settings.SecondaryTriggerEnabled && !TriggerFormatter.SecondaryDuplicatesPrimary(_settings))
+        {
+            try
+            {
+                if (_settings.SecondaryTriggerKind == TriggerKind.Keyboard)
+                {
+                    _secondaryHotkeyService.Register(_settings.SecondaryHotkeyModifiers, _settings.SecondaryHotkeyKey);
+                }
+                else
+                {
+                    _secondaryMouseTriggerService.Start(_settings.SecondaryMouseButton);
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                System.Windows.MessageBox.Show($"Déclencheur secondaire : {ex.Message}", "Dictée universelle", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        _trayIconService.SetSecondaryTriggerState(_settings.SecondaryTriggerEnabled, TriggerFormatter.FormatSecondary(_settings));
+        RefreshTaskbarJumpList();
+    }
+
+    /// <summary>Active/désactive le déclencheur secondaire (menu de la zone de notification ou Jump List) et mémorise le choix.</summary>
+    private void ToggleSecondaryTrigger()
+    {
+        _settings.SecondaryTriggerEnabled = !_settings.SecondaryTriggerEnabled;
+        _settingsStore.Save(_settings);
+        ApplyTrigger();
+
+        var description = TriggerFormatter.FormatSecondary(_settings);
+        _trayIconService.ShowBalloon(_settings.SecondaryTriggerEnabled
+            ? $"Déclencheur secondaire : ON ({description})"
+            : "Déclencheur secondaire : OFF");
     }
 
     private void ApplyOverlayToggleHotkey()
@@ -315,6 +386,19 @@ public partial class App : System.Windows.Application
         catch (InvalidOperationException ex)
         {
             System.Windows.MessageBox.Show(ex.Message, "Dictée universelle", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void ApplySecondaryToggleHotkey()
+    {
+        _secondaryToggleHotkeyService.Unregister();
+        try
+        {
+            _secondaryToggleHotkeyService.Register(_settings.SecondaryToggleModifiers, _settings.SecondaryToggleKey);
+        }
+        catch (InvalidOperationException ex)
+        {
+            System.Windows.MessageBox.Show($"Raccourci du déclencheur secondaire : {ex.Message}", "Dictée universelle", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -358,6 +442,7 @@ public partial class App : System.Windows.Application
             _overlayWindow.Opacity = _settings.OverlayOpacity;
             ApplyTrigger();
             ApplyOverlayToggleHotkey();
+            ApplySecondaryToggleHotkey();
             ThemeManager.Apply(_settings.Theme, _settings.PrimaryColorHex);
             PrewarmMicrophone();
             ApplyTaskbarIndicatorVisibility();
@@ -377,7 +462,10 @@ public partial class App : System.Windows.Application
         _updateCheckTimer.Stop();
         _hotkeyService.Dispose();
         _mouseTriggerService.Dispose();
+        _secondaryHotkeyService.Dispose();
+        _secondaryMouseTriggerService.Dispose();
         _overlayToggleHotkeyService.Dispose();
+        _secondaryToggleHotkeyService.Dispose();
         _trayIconService.Dispose();
         _taskbarBadgeService.Dispose();
         _taskbarIndicatorWindow.ForceClose();

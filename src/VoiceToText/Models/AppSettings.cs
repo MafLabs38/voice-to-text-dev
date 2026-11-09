@@ -4,6 +4,7 @@ namespace VoiceToText.Models;
 
 public sealed class AppSettings
 {
+    // Déclencheur principal : toujours actif.
     public TriggerKind TriggerKind { get; set; } = TriggerKind.Keyboard;
 
     public ModifierKeys HotkeyModifiers { get; set; } = ModifierKeys.Control | ModifierKeys.Alt;
@@ -11,6 +12,23 @@ public sealed class AppSettings
     public Key HotkeyKey { get; set; } = Key.Space;
 
     public MouseTriggerButton MouseButton { get; set; } = MouseTriggerButton.Middle;
+
+    // Déclencheur secondaire : défini comme le principal (touche ou bouton de souris), mais
+    // activable/désactivable à la volée (menu de la zone de notification, Jump List, Paramètres).
+    public bool SecondaryTriggerEnabled { get; set; }
+
+    public TriggerKind SecondaryTriggerKind { get; set; } = TriggerKind.Mouse;
+
+    public ModifierKeys SecondaryHotkeyModifiers { get; set; } = ModifierKeys.Control | ModifierKeys.Alt;
+
+    public Key SecondaryHotkeyKey { get; set; } = Key.Space;
+
+    public MouseTriggerButton SecondaryMouseButton { get; set; } = MouseTriggerButton.Middle;
+
+    /// <summary>Raccourci global qui active/désactive le déclencheur secondaire.</summary>
+    public ModifierKeys SecondaryToggleModifiers { get; set; } = ModifierKeys.Control | ModifierKeys.Alt;
+
+    public Key SecondaryToggleKey { get; set; } = Key.D;
 
     public ModifierKeys OverlayToggleModifiers { get; set; } = ModifierKeys.Control | ModifierKeys.Alt;
 
