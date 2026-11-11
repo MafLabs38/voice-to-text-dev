@@ -20,7 +20,7 @@ jobs:
       # SYNTHÉTIQUE que GitHub prévisualise (source fusionnée dans la cible), pas le vrai commit
       # de tête de la branche source — ce commit de prévisualisation n'existe pas en tant que tel
       # et n'a donc jamais de tag dessus. On force explicitement le vrai commit de tête de la PR.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
